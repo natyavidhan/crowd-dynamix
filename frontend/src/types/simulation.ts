@@ -174,9 +174,39 @@ export type ControlAction =
   | 'block_exit'
   | 'unblock_exit'
   | 'add_choke_point'
-  | 'remove_choke_point';
+  | 'remove_choke_point'
+  | 'load_venue';
 
 export interface ControlMessage {
   action: ControlAction;
   payload?: Record<string, unknown>;
+}
+
+// ============================================================================
+// Venue Types
+// ============================================================================
+
+export interface VenueSummary {
+  id: string;
+  name: string;
+  location: string;
+  description?: string;
+  file?: string;
+}
+
+export interface RoadGeometry {
+  id: string;
+  name: string;
+  width: number;
+  coordinates: GeoPoint[];
+}
+
+export interface VenueInfo {
+  id: string;
+  name: string;
+  location: string;
+  description: string;
+  roads: RoadGeometry[];
+  spawn_point_count: number;
+  choke_point_count: number;
 }

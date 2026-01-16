@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 import { useSimulationStore } from '@/store';
 import { ciiToColor, riskLevelColor } from '@/utils';
-import type { ChokePoint, CIIExplanation, AggregatedSensorData } from '@/types';
+import type { ChokePoint } from '@/types';
 
 interface ChokePointCardProps {
   chokePointId: string;

@@ -11,6 +11,8 @@ import type {
   AggregatedSensorData,
   CIIExplanation,
   ControlMessage,
+  VenueSummary,
+  VenueInfo,
 } from '@/types';
 
 // ============================================================================
@@ -30,12 +32,19 @@ interface SimulationStore {
   ciiExplanations: Record<string, CIIExplanation>;
   config: SimulationConfig;
   
+  // Venue state
+  availableVenues: VenueSummary[];
+  currentVenue: VenueInfo | null;
+  venueLoading: boolean;
+  
   // UI state
   selectedChokePoint: string | null;
   showAgents: boolean;
+  showRoads: boolean;
   
   // Time series history (for charts)
   ciiHistory: Record<string, { timestamp: number; cii: number }[]>;
+  lastHistoryUpdate: number | null;
   
   // Actions
   connect: () => void;
@@ -44,6 +53,10 @@ interface SimulationStore {
   updateState: (state: SimulationState) => void;
   selectChokePoint: (id: string | null) => void;
   toggleAgents: () => void;
+  toggleRoads: () => void;
+  fetchVenues: () => Promise<void>;
+  loadVenue: (venueId: string) => Promise<void>;
+  fetchCurrentVenue: () => Promise<void>;
 }
 
 // ============================================================================
@@ -73,6 +86,12 @@ const getWebSocketUrl = () => {
   return `${protocol}//${host}:${port}/ws`;
 };
 
+const getApiBaseUrl = () => {
+  const host = window.location.hostname;
+  const port = import.meta.env.DEV ? '8000' : window.location.port;
+  return `http://${host}:${port}`;
+};
+
 // ============================================================================
 // Store
 // ============================================================================
@@ -89,7 +108,14 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   config: defaultConfig,
   selectedChokePoint: null,
   showAgents: true,
+  showRoads: true,
   ciiHistory: {},
+  lastHistoryUpdate: null,
+  
+  // Venue state
+  availableVenues: [],
+  currentVenue: null,
+  venueLoading: false,
   
   // Connect to WebSocket
   connect: () => {
@@ -147,26 +173,26 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   
   // Update state from backend
   updateState: (state: SimulationState) => {
-    const { ciiHistory } = get();
+    const { ciiHistory, lastHistoryUpdate } = get();
     
-    // Update CII history for charts
-    const newHistory = { ...ciiHistory };
+    // Update CII history for charts - throttle to every 500ms instead of every frame
     const now = Date.now();
+    let newHistory = ciiHistory;
     
-    for (const cp of state.choke_points) {
-      if (!newHistory[cp.id]) {
-        newHistory[cp.id] = [];
+    if (!lastHistoryUpdate || now - lastHistoryUpdate > 500) {
+      newHistory = { ...ciiHistory };
+      
+      for (const cp of state.choke_points) {
+        if (!newHistory[cp.id]) {
+          newHistory[cp.id] = [];
+        }
+        
+        // Add new data point
+        newHistory[cp.id] = [
+          ...newHistory[cp.id].slice(-120), // Keep last 60 data points (at 500ms = 30 seconds)
+          { timestamp: now, cii: cp.risk_state.cii }
+        ];
       }
-      
-      // Add new data point
-      newHistory[cp.id].push({
-        timestamp: now,
-        cii: cp.risk_state.cii,
-      });
-      
-      // Keep last 60 seconds (at 30 Hz, that's 1800 points, but we sample less)
-      const cutoff = now - 60000;
-      newHistory[cp.id] = newHistory[cp.id].filter(d => d.timestamp > cutoff);
     }
     
     set({
@@ -177,6 +203,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       ciiExplanations: state.cii_explanations,
       config: state.config,
       ciiHistory: newHistory,
+      lastHistoryUpdate: newHistory !== ciiHistory ? now : lastHistoryUpdate,
     });
   },
   
@@ -188,5 +215,55 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   // Toggle agent visibility
   toggleAgents: () => {
     set(state => ({ showAgents: !state.showAgents }));
+  },
+  
+  // Toggle road visibility
+  toggleRoads: () => {
+    set(state => ({ showRoads: !state.showRoads }));
+  },
+  
+  // Fetch available venues
+  fetchVenues: async () => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/venues`);
+      const data = await response.json();
+      set({ availableVenues: data.venues || [] });
+    } catch (error) {
+      console.error('Failed to fetch venues:', error);
+    }
+  },
+  
+  // Load a venue
+  loadVenue: async (venueId: string) => {
+    set({ venueLoading: true });
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/venues/load`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ venue_id: venueId }),
+      });
+      
+      if (response.ok) {
+        // Fetch current venue to get road data
+        await get().fetchCurrentVenue();
+        // Clear CII history on venue change
+        set({ ciiHistory: {} });
+      }
+    } catch (error) {
+      console.error('Failed to load venue:', error);
+    } finally {
+      set({ venueLoading: false });
+    }
+  },
+  
+  // Fetch current venue info
+  fetchCurrentVenue: async () => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/venues/current`);
+      const data = await response.json();
+      set({ currentVenue: data.venue || null });
+    } catch (error) {
+      console.error('Failed to fetch current venue:', error);
+    }
   },
 }));

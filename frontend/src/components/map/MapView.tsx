@@ -4,21 +4,33 @@
  */
 
 import { useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, ZoomControl } from 'react-leaflet';
+import { MapContainer, TileLayer, ZoomControl, useMap } from 'react-leaflet';
 import { useSimulationStore } from '@/store';
 import { ChokePointLayer } from './ChokePointLayer';
 import { AgentCanvas } from './AgentCanvas';
+import { RoadLayer } from './RoadLayer';
 
 // Default center (Bangalore - can be changed via API)
 const DEFAULT_CENTER: [number, number] = [12.9716, 77.5946];
 const DEFAULT_ZOOM = 17;
+
+// Component to recenter map when venue changes
+function MapRecenter({ center }: { center: [number, number] }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    map.setView(center, DEFAULT_ZOOM, { animate: true });
+  }, [map, center]);
+  
+  return null;
+}
 
 export function MapView() {
   const chokePoints = useSimulationStore((state) => state.chokePoints);
   const showAgents = useSimulationStore((state) => state.showAgents);
   const selectChokePoint = useSimulationStore((state) => state.selectChokePoint);
   
-  // Calculate center from choke points
+  // Calculate center from choke points or venue roads
   const center = useMemo<[number, number]>(() => {
     if (chokePoints.length === 0) return DEFAULT_CENTER;
     
@@ -43,6 +55,12 @@ export function MapView() {
       
       {/* Zoom controls (bottom right) */}
       <ZoomControl position="bottomright" />
+      
+      {/* Recenter on venue change */}
+      <MapRecenter center={center} />
+      
+      {/* Road network from venue config */}
+      <RoadLayer />
       
       {/* Choke point visualization */}
       <ChokePointLayer onSelect={selectChokePoint} />

@@ -5,12 +5,15 @@
 
 import { useEffect } from 'react';
 import { MapView } from '@/components/map';
-import { ControlPanel, ChokePointList, ChokePointCard } from '@/components/dashboard';
+import { ControlPanel, ChokePointList, ChokePointCard, VenueSelector } from '@/components/dashboard';
 import { useSimulationStore } from '@/store';
 
 export default function App() {
   const connect = useSimulationStore((state) => state.connect);
   const selectedChokePoint = useSimulationStore((state) => state.selectedChokePoint);
+  const toggleRoads = useSimulationStore((state) => state.toggleRoads);
+  const showRoads = useSimulationStore((state) => state.showRoads);
+  const currentVenue = useSimulationStore((state) => state.currentVenue);
   
   // Connect to WebSocket on mount
   useEffect(() => {
@@ -27,6 +30,9 @@ export default function App() {
         <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur px-4 py-2 rounded-lg">
           <h1 className="text-xl font-bold">Crowd Instability Monitor</h1>
           <p className="text-sm text-gray-400">Pre-Stampede Early Warning System</p>
+          {currentVenue && (
+            <p className="text-xs text-blue-400 mt-1">{currentVenue.name}</p>
+          )}
         </div>
         
         {/* Legend */}
@@ -46,11 +52,26 @@ export default function App() {
               <span>High Risk</span>
             </div>
           </div>
+          
+          {/* Road toggle */}
+          <div className="mt-2 pt-2 border-t border-gray-700 flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="showRoads"
+              checked={showRoads}
+              onChange={toggleRoads}
+              className="rounded border-gray-600"
+            />
+            <label htmlFor="showRoads" className="text-xs text-gray-400">Show roads</label>
+          </div>
         </div>
       </div>
       
       {/* Dashboard sidebar */}
       <div className="w-96 bg-gray-900 border-l border-gray-800 p-4 overflow-y-auto flex flex-col gap-4">
+        {/* Venue selector */}
+        <VenueSelector />
+        
         <ControlPanel />
         
         <div>

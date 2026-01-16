@@ -3,7 +3,7 @@
  * Renders circular/polygonal regions with risk-based coloring.
  */
 
-import { Circle, Popup, useMap } from 'react-leaflet';
+import { Circle, Popup } from 'react-leaflet';
 import { useSimulationStore } from '@/store';
 import { ciiToColor } from '@/utils';
 import type { ChokePoint } from '@/types';
