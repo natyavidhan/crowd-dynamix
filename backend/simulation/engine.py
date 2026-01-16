@@ -176,6 +176,7 @@ class VenueInfo:
     roads: List[Dict]  # Road geometries in geo coordinates
     spawn_point_count: int
     choke_point_count: int
+    origin: Dict  # Origin point {lat, lng} for coordinate conversion
 
 
 # ============================================================================
@@ -299,7 +300,11 @@ class SimulationEngine:
             description=self.current_venue.venue.description or "",
             roads=self.venue_loader.get_road_geometries_geo(),
             spawn_point_count=len(self.spawn_points),
-            choke_point_count=len(self.choke_points)
+            choke_point_count=len(self.choke_points),
+            origin={
+                "lat": self.current_venue.origin.lat,
+                "lng": self.current_venue.origin.lng
+            }
         )
     
     def reset(self):
@@ -439,13 +444,20 @@ class SimulationEngine:
             for idx in indices
         ]
         
+        # Include origin from coordinate system
+        origin = GeoPoint(
+            lat=self.coord_sys.origin.lat,
+            lng=self.coord_sys.origin.lng
+        )
+        
         return SimulationState(
             tick=self.tick,
             agents=agent_snapshots,
             choke_points=self.choke_points,
             sensor_data=self.sensor_data,
             cii_explanations=self.cii_explanations,
-            config=self.config
+            config=self.config,
+            origin=origin
         )
     
     async def run_loop(

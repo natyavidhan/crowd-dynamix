@@ -259,7 +259,8 @@ async def get_current_venue():
             "description": venue_info.description,
             "roads": venue_info.roads,
             "spawn_point_count": venue_info.spawn_point_count,
-            "choke_point_count": venue_info.choke_point_count
+            "choke_point_count": venue_info.choke_point_count,
+            "origin": venue_info.origin
         }
     }
 

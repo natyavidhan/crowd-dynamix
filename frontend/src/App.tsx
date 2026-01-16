@@ -4,6 +4,7 @@
  */
 
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { MapView } from '@/components/map';
 import { ControlPanel, ChokePointList, ChokePointCard, VenueSelector } from '@/components/dashboard';
 import { useSimulationStore } from '@/store';
@@ -27,7 +28,7 @@ export default function App() {
         <MapView />
         
         {/* Title overlay */}
-        <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur px-4 py-2 rounded-lg">
+        <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur px-4 py-2 rounded-lg z-[1000] pointer-events-auto">
           <h1 className="text-xl font-bold">Crowd Instability Monitor</h1>
           <p className="text-sm text-gray-400">Pre-Stampede Early Warning System</p>
           {currentVenue && (
@@ -36,7 +37,7 @@ export default function App() {
         </div>
         
         {/* Legend */}
-        <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur px-4 py-3 rounded-lg">
+        <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur px-4 py-3 rounded-lg z-[1000] pointer-events-auto">
           <div className="text-xs text-gray-400 mb-2">Risk Level</div>
           <div className="flex gap-4 text-sm">
             <div className="flex items-center gap-2">
@@ -63,6 +64,16 @@ export default function App() {
               className="rounded border-gray-600"
             />
             <label htmlFor="showRoads" className="text-xs text-gray-400">Show roads</label>
+          </div>
+          
+          {/* Editor link */}
+          <div className="mt-2 pt-2 border-t border-gray-700">
+            <Link
+              to="/editor"
+              className="text-xs text-purple-400 hover:text-purple-300 underline"
+            >
+              🗺️ Open Venue Editor
+            </Link>
           </div>
         </div>
       </div>

@@ -157,6 +157,7 @@ export interface SimulationState {
   sensor_data: Record<string, AggregatedSensorData>;
   cii_explanations: Record<string, CIIExplanation>;
   config: SimulationConfig;
+  origin?: GeoPoint;  // Venue origin for coordinate conversion
 }
 
 // ============================================================================
@@ -209,4 +210,5 @@ export interface VenueInfo {
   roads: RoadGeometry[];
   spawn_point_count: number;
   choke_point_count: number;
+  origin: GeoPoint;
 }

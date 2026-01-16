@@ -22,16 +22,27 @@ export function AgentCanvas({ visible = true }: AgentCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const agents = useSimulationStore((state) => state.agents);
   const chokePoints = useSimulationStore((state) => state.chokePoints);
+  const origin = useSimulationStore((state) => state.origin);
+  const currentVenue = useSimulationStore((state) => state.currentVenue);
   
-  // Get origin from first choke point or use default
-  const origin = useMemo(() => {
+  // Get origin from WebSocket state (most reliable), then venue, then choke points, then default
+  const effectiveOrigin = useMemo(() => {
+    // Prefer origin from WebSocket state (always up-to-date)
+    if (origin) {
+      return origin;
+    }
+    // Fallback to venue origin from REST API
+    if (currentVenue?.origin) {
+      return currentVenue.origin;
+    }
+    // Fallback to first choke point center
     if (chokePoints.length > 0) {
       return chokePoints[0].center;
     }
     return DEFAULT_ORIGIN;
-  }, [chokePoints]);
+  }, [origin, currentVenue, chokePoints]);
   
-  const coordSystem = useMemo(() => createCoordinateSystem(origin), [origin]);
+  const coordSystem = useMemo(() => createCoordinateSystem(effectiveOrigin), [effectiveOrigin]);
   
   // Create canvas pane
   useEffect(() => {

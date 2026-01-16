@@ -1,0 +1,195 @@
+# Marina Beach (Chennai) Venue Configuration
+# Popular beach stretch with multiple entry points and crowd gathering areas
+
+venue:
+  name: "Marina Beach"
+  location: "Chennai, Tamil Nadu, India"
+  description: "India's longest urban beach, popular tourist destination with high crowd density during evenings and festivals"
+
+# Origin point for coordinate conversion (center of simulation area)
+origin:
+  lat: 13.0500
+  lng: 80.2825
+
+# Road network
+# At Marina Beach:
+# - Beach Road (Kamarajar Salai) runs NORTH-SOUTH (lat changes, lng constant)
+# - Beach promenade runs parallel to coast (N-S)
+# - Access paths go WEST-EAST from road to beach (lng changes, lat constant)
+
+roads:
+  # Main road running north-south along the beach
+  - id: "kamarajar_salai"
+    name: "Kamarajar Salai (Beach Road)"
+    width: 20.0
+    speed_limit: 1.5
+    bidirectional: true
+    centerline:
+      - lat: 13.0480
+        lng: 80.2810
+      - lat: 13.0490
+        lng: 80.2810
+      - lat: 13.0500
+        lng: 80.2810
+      - lat: 13.0510
+        lng: 80.2810
+      - lat: 13.0520
+        lng: 80.2810
+
+  # Beach promenade - runs parallel to coastline (north-south)
+  - id: "promenade"
+    name: "Beach Promenade"
+    width: 15.0
+    speed_limit: 1.0
+    bidirectional: true
+    centerline:
+      - lat: 13.0480
+        lng: 80.2840
+      - lat: 13.0490
+        lng: 80.2840
+      - lat: 13.0500
+        lng: 80.2840
+      - lat: 13.0510
+        lng: 80.2840
+      - lat: 13.0520
+        lng: 80.2840
+
+  # Access paths from road to beach (west to east)
+  - id: "access_north"
+    name: "Northern Access Path"
+    width: 10.0
+    speed_limit: 1.0
+    bidirectional: true
+    centerline:
+      - lat: 13.0515
+        lng: 80.2810
+      - lat: 13.0515
+        lng: 80.2825
+      - lat: 13.0515
+        lng: 80.2840
+
+  - id: "access_central"
+    name: "Central Access Path"
+    width: 12.0
+    speed_limit: 1.0
+    bidirectional: true
+    centerline:
+      - lat: 13.0500
+        lng: 80.2810
+      - lat: 13.0500
+        lng: 80.2825
+      - lat: 13.0500
+        lng: 80.2840
+
+  - id: "access_south"
+    name: "Southern Access Path"
+    width: 10.0
+    speed_limit: 1.0
+    bidirectional: true
+    centerline:
+      - lat: 13.0485
+        lng: 80.2810
+      - lat: 13.0485
+        lng: 80.2825
+      - lat: 13.0485
+        lng: 80.2840
+
+# Exit/Destination points
+exits:
+  - id: "exit_north"
+    name: "Northern Exit"
+    location:
+      lat: 13.0520
+      lng: 80.2810
+    capacity: 100
+
+  - id: "exit_south"
+    name: "Southern Exit"
+    location:
+      lat: 13.0480
+      lng: 80.2810
+    capacity: 100
+
+  - id: "beach_area"
+    name: "Beach Gathering Area"
+    location:
+      lat: 13.0500
+      lng: 80.2850
+    capacity: 500
+
+# Spawn points (where agents enter)
+spawn_points:
+  - id: "spawn_north"
+    name: "Northern Entry (from road)"
+    road_id: "kamarajar_salai"
+    road_position: "end"
+    exit_id: "beach_area"
+    rate: 5.0
+    spread: 3.0
+    flow_group: "northbound"
+
+  - id: "spawn_south"
+    name: "Southern Entry (from road)"
+    road_id: "kamarajar_salai"
+    road_position: "start"
+    exit_id: "beach_area"
+    rate: 5.0
+    spread: 3.0
+    flow_group: "southbound"
+
+  - id: "spawn_beach"
+    name: "Beach Entry (from promenade)"
+    road_id: "promenade"
+    road_position: "middle"
+    exit_id: "exit_north"
+    rate: 3.0
+    spread: 5.0
+    flow_group: "beachgoers"
+
+# Choke points (monitoring zones)
+choke_points:
+  - id: "cp_central_crossing"
+    name: "Central Crossing"
+    location:
+      lat: 13.0500
+      lng: 80.2825
+    radius: 25.0
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+
+  - id: "cp_north_access"
+    name: "Northern Access Point"
+    location:
+      lat: 13.0515
+      lng: 80.2825
+    radius: 20.0
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: false
+
+  - id: "cp_south_access"
+    name: "Southern Access Point"
+    location:
+      lat: 13.0485
+      lng: 80.2825
+    radius: 20.0
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: false
+
+  - id: "cp_beach_promenade"
+    name: "Beach Promenade Zone"
+    location:
+      lat: 13.0500
+      lng: 80.2840
+    radius: 30.0
+    mmwave_enabled: true
+    audio_enabled: false
+    camera_enabled: true
+
+# Simulation defaults for this venue
+defaults:
+  agent_count: 300
+  spawn_rate: 8.0
+  speed_multiplier: 1.0

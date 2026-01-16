@@ -13,6 +13,7 @@ import type {
   ControlMessage,
   VenueSummary,
   VenueInfo,
+  GeoPoint,
 } from '@/types';
 
 // ============================================================================
@@ -31,6 +32,7 @@ interface SimulationStore {
   sensorData: Record<string, AggregatedSensorData>;
   ciiExplanations: Record<string, CIIExplanation>;
   config: SimulationConfig;
+  origin: GeoPoint | null;  // Venue origin from WebSocket state
   
   // Venue state
   availableVenues: VenueSummary[];
@@ -106,6 +108,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   sensorData: {},
   ciiExplanations: {},
   config: defaultConfig,
+  origin: null,  // Will be set from WebSocket state
   selectedChokePoint: null,
   showAgents: true,
   showRoads: true,
@@ -202,6 +205,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       sensorData: state.sensor_data,
       ciiExplanations: state.cii_explanations,
       config: state.config,
+      origin: state.origin || null,  // Save origin from WebSocket state
       ciiHistory: newHistory,
       lastHistoryUpdate: newHistory !== ciiHistory ? now : lastHistoryUpdate,
     });

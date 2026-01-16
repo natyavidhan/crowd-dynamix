@@ -254,6 +254,9 @@ class SimulationState(BaseModel):
     cii_explanations: Dict[str, CIIExplanation] = Field(default_factory=dict)
     
     config: SimulationConfig = Field(default_factory=SimulationConfig)
+    
+    # Venue origin for coordinate conversion (sim coords -> geo coords)
+    origin: Optional[GeoPoint] = None
 
 
 class ControlMessage(BaseModel):

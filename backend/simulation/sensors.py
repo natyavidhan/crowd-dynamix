@@ -226,8 +226,8 @@ def simulate_mmwave(
     buffer = buffers.get_buffer(choke_point.id)
     
     if len(indices) == 0:
-        # No agents in region
-        buffer.push(timestamp, 0.0, 1.0)
+        # No agents in region - return safe values
+        buffer.push(timestamp, 0.0, 0.0)  # stationary_ratio=0 when no agents
         return MmWaveSensorData(
             timestamp=timestamp,
             choke_point_id=choke_point.id,
@@ -236,7 +236,7 @@ def simulate_mmwave(
             dominant_direction=0.0,
             directional_divergence=0.0,
             stop_go_frequency=buffer.compute_stop_go_frequency(),
-            stationary_ratio=1.0
+            stationary_ratio=0.0  # 0% stationary when no agents (safe)
         )
     
     # Compute velocity statistics
