@@ -26,7 +26,7 @@ from utils.vector import (
 MAX_SPEED = 1.4          # m/s (normal walking)
 MIN_SPEED = 0.1          # m/s (below this = stopped)
 MAX_ACCELERATION = 2.0   # m/s²
-FRICTION = 0.95          # velocity damping per frame
+FRICTION_DECAY = 0.5     # velocity decay per second (half-life style)
 
 # Personal space
 AGENT_RADIUS = 0.3       # meters
@@ -451,8 +451,9 @@ def update_agents(
         # Clamp acceleration
         acceleration = clamp_magnitude(total_force, MAX_ACCELERATION)
         
-        # Update velocity with friction
-        new_velocity = pool.velocities[idx] * FRICTION + acceleration * dt
+        # Update velocity with time-based friction (frame-rate independent)
+        friction = np.exp(-FRICTION_DECAY * dt)  # Smooth decay
+        new_velocity = pool.velocities[idx] * friction + acceleration * dt
         new_velocity = clamp_magnitude(new_velocity, pool.max_speeds[idx])
         
         pool.velocities[idx] = new_velocity

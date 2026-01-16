@@ -266,8 +266,8 @@ def simulate_mmwave(
     return MmWaveSensorData(
         timestamp=timestamp,
         choke_point_id=choke_point.id,
-        avg_velocity=add_noise(avg_velocity, 0.05),
-        velocity_variance=add_noise(velocity_variance, 0.02),
+        avg_velocity=max(0, add_noise(avg_velocity, 0.05)),
+        velocity_variance=max(0, add_noise(velocity_variance, 0.02)),
         dominant_direction=dominant_direction,
         directional_divergence=clamp(add_noise(directional_divergence, 0.03)),
         stop_go_frequency=max(0, add_noise(stop_go_frequency, 0.5)),
@@ -379,7 +379,7 @@ def simulate_camera(
     return CameraSensorData(
         timestamp=timestamp,
         choke_point_id=choke_point.id,
-        crowd_density=add_noise(crowd_density, 0.1),
+        crowd_density=max(0, add_noise(crowd_density, 0.1)),
         occlusion_percentage=clamp(add_noise(occlusion, 0.02)),
         optical_flow_consistency=clamp(add_noise(optical_flow, 0.03))
     )

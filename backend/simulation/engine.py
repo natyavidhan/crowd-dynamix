@@ -304,24 +304,30 @@ class SimulationEngine:
             cp.risk_state = new_state
             self.cii_explanations[cp.id] = explanation
     
+    # Pre-computed state map for performance
+    _state_map = {0: "moving", 1: "slowing", 2: "stopped", 3: "pushing"}
+    
     def get_state(self) -> SimulationState:
         """Get current simulation state for broadcasting."""
-        # Convert agents to snapshots
-        agent_snapshots = []
-        for idx in self.agent_pool.get_active_indices():
-            pos = self.agent_pool.positions[idx]
-            vel = self.agent_pool.velocities[idx]
-            state_int = self.agent_pool.states[idx]
-            state_map = {0: "moving", 1: "slowing", 2: "stopped", 3: "pushing"}
-            
-            agent_snapshots.append(AgentSnapshot(
-                id=int(self.agent_pool.ids[idx]),
-                x=float(pos[0]),
-                y=float(pos[1]),
-                vx=float(vel[0]),
-                vy=float(vel[1]),
-                state=state_map.get(state_int, "moving")
-            ))
+        # Convert agents to snapshots using list comprehension for speed
+        indices = self.agent_pool.get_active_indices()
+        positions = self.agent_pool.positions
+        velocities = self.agent_pool.velocities
+        states = self.agent_pool.states
+        ids = self.agent_pool.ids
+        state_map = self._state_map
+        
+        agent_snapshots = [
+            AgentSnapshot(
+                id=int(ids[idx]),
+                x=float(positions[idx, 0]),
+                y=float(positions[idx, 1]),
+                vx=float(velocities[idx, 0]),
+                vy=float(velocities[idx, 1]),
+                state=state_map.get(states[idx], "moving")
+            )
+            for idx in indices
+        ]
         
         return SimulationState(
             tick=self.tick,
@@ -337,7 +343,7 @@ class SimulationEngine:
         target_fps: float = 60.0,
         sensor_hz: float = 10.0,
         cii_hz: float = 1.0,
-        broadcast_hz: float = 30.0
+        broadcast_hz: float = 15.0  # Reduced from 30Hz for better performance
     ):
         """
         Main simulation loop.
