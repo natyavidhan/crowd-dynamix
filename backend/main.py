@@ -206,6 +206,65 @@ async def remove_choke_point(choke_point_id: str):
 
 
 # ============================================================================
+# Venue Management
+# ============================================================================
+
+@app.get("/venues")
+async def list_venues():
+    """Get list of available venue configurations."""
+    venues = engine.get_available_venues()
+    return {"venues": venues}
+
+
+class LoadVenueRequest(BaseModel):
+    venue_id: str
+
+
+@app.post("/venues/load")
+async def load_venue(request: LoadVenueRequest):
+    """Load a venue configuration by ID."""
+    success = engine.load_venue(request.venue_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Venue '{request.venue_id}' not found")
+    
+    venue_info = engine.get_current_venue_info()
+    return {
+        "status": "loaded",
+        "venue": {
+            "id": venue_info.id,
+            "name": venue_info.name,
+            "location": venue_info.location,
+            "description": venue_info.description,
+            "spawn_point_count": venue_info.spawn_point_count,
+            "choke_point_count": venue_info.choke_point_count
+        }
+    }
+
+
+@app.get("/venues/current")
+async def get_current_venue():
+    """Get information about the currently loaded venue."""
+    venue_info = engine.get_current_venue_info()
+    if venue_info is None:
+        return {
+            "venue": None,
+            "message": "No venue loaded (using demo mode)"
+        }
+    
+    return {
+        "venue": {
+            "id": venue_info.id,
+            "name": venue_info.name,
+            "location": venue_info.location,
+            "description": venue_info.description,
+            "roads": venue_info.roads,
+            "spawn_point_count": venue_info.spawn_point_count,
+            "choke_point_count": venue_info.choke_point_count
+        }
+    }
+
+
+# ============================================================================
 # Perturbation Controls
 # ============================================================================
 
@@ -326,6 +385,10 @@ async def handle_control_message(msg: ControlMessage):
     elif msg.action == "remove_choke_point":
         if msg.payload and "id" in msg.payload:
             engine.remove_choke_point(msg.payload["id"])
+    
+    elif msg.action == "load_venue":
+        if msg.payload and "venue_id" in msg.payload:
+            engine.load_venue(msg.payload["venue_id"])
 
 
 # ============================================================================

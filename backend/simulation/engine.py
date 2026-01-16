@@ -8,6 +8,7 @@ import asyncio
 import time
 from typing import List, Dict, Optional, Callable, Awaitable
 from dataclasses import dataclass, field
+from pathlib import Path
 import numpy as np
 
 import sys
@@ -26,6 +27,9 @@ from simulation.agents import (
 )
 from simulation.sensors import SensorBuffers, simulate_all_sensors
 from simulation.cii import update_risk_state, DEFAULT_WEIGHTS
+
+# Import venue loader
+from configs.venues import VenueConfig, VenueLoader, list_available_venues, load_venue
 
 
 # ============================================================================
@@ -159,6 +163,22 @@ def create_demo_choke_points(coord_sys: CoordinateSystem) -> List[ChokePoint]:
 
 
 # ============================================================================
+# Venue Data Container
+# ============================================================================
+
+@dataclass
+class VenueInfo:
+    """Current venue information for API responses."""
+    id: str
+    name: str
+    location: str
+    description: str
+    roads: List[Dict]  # Road geometries in geo coordinates
+    spawn_point_count: int
+    choke_point_count: int
+
+
+# ============================================================================
 # Simulation Engine
 # ============================================================================
 
@@ -171,6 +191,14 @@ class SimulationEngine:
     coord_sys: CoordinateSystem = field(default_factory=lambda: CoordinateSystem(
         origin=GeoPoint(lat=12.9716, lng=77.5946)  # Default: Bangalore
     ))
+    
+    # Venue config directory
+    configs_dir: Path = field(default_factory=lambda: Path(__file__).parent.parent / "configs" / "venues")
+    
+    # Current venue
+    current_venue: Optional[VenueConfig] = None
+    current_venue_id: Optional[str] = None
+    venue_loader: Optional[VenueLoader] = None
     
     # Subsystems
     agent_pool: AgentPool = field(init=False)
@@ -200,9 +228,79 @@ class SimulationEngine:
         self.spatial_hash = SpatialHash(cell_size=3.0)
         self.sensor_buffers = SensorBuffers()
         
-        # Initialize demo scenario
-        self.spawn_points = create_demo_spawn_points(self.coord_sys)
-        self.choke_points = create_demo_choke_points(self.coord_sys)
+        # Try to load default venue, fallback to demo scenario
+        if not self._try_load_default_venue():
+            self.spawn_points = create_demo_spawn_points(self.coord_sys)
+            self.choke_points = create_demo_choke_points(self.coord_sys)
+    
+    def _try_load_default_venue(self) -> bool:
+        """Try to load a default venue config."""
+        venues = list_available_venues(self.configs_dir)
+        if venues:
+            # Load first available venue (marina_beach is alphabetically first)
+            first_venue = sorted(venues, key=lambda v: v['id'])[0]
+            return self.load_venue(first_venue['id'])
+        return False
+    
+    def get_available_venues(self) -> List[Dict]:
+        """Get list of available venue configurations."""
+        return list_available_venues(self.configs_dir)
+    
+    def load_venue(self, venue_id: str) -> bool:
+        """Load a venue configuration by ID."""
+        config = load_venue(self.configs_dir, venue_id)
+        if config is None:
+            return False
+        
+        self.current_venue = config
+        self.current_venue_id = venue_id
+        self.venue_loader = VenueLoader(config)
+        
+        # Update coordinate system with new origin
+        self.coord_sys = CoordinateSystem(
+            origin=GeoPoint(lat=config.origin.lat, lng=config.origin.lng)
+        )
+        
+        # Load choke points from venue
+        self.choke_points = self.venue_loader.choke_points
+        
+        # Load spawn points from venue
+        self.spawn_points = []
+        for psp in self.venue_loader.spawn_points:
+            sp = SpawnPoint(
+                position=psp.position,
+                direction=psp.direction,
+                waypoints=psp.waypoints,
+                spread=psp.spread
+            )
+            self.spawn_points.append(sp)
+        
+        # Apply venue defaults to config
+        if config.defaults:
+            if config.defaults.agent_count:
+                self.config.max_agents = config.defaults.agent_count
+            if config.defaults.spawn_rate:
+                self.config.base_inflow_rate = config.defaults.spawn_rate
+        
+        # Reset simulation
+        self.reset()
+        
+        return True
+    
+    def get_current_venue_info(self) -> Optional[VenueInfo]:
+        """Get info about currently loaded venue."""
+        if not self.current_venue or not self.venue_loader:
+            return None
+        
+        return VenueInfo(
+            id=self.current_venue_id,
+            name=self.current_venue.venue.name,
+            location=self.current_venue.venue.location,
+            description=self.current_venue.venue.description or "",
+            roads=self.venue_loader.get_road_geometries_geo(),
+            spawn_point_count=len(self.spawn_points),
+            choke_point_count=len(self.choke_points)
+        )
     
     def reset(self):
         """Reset simulation to initial state."""
@@ -216,11 +314,23 @@ class SimulationEngine:
         for cp in self.choke_points:
             cp.risk_state = RiskState()
         
-        # Recreate spawn points based on current config
-        self.spawn_points = create_demo_spawn_points(
-            self.coord_sys,
-            opposing_flow=self.config.opposing_flow_enabled
-        )
+        # If we have a loaded venue, use its spawn points
+        if self.venue_loader:
+            self.spawn_points = []
+            for psp in self.venue_loader.spawn_points:
+                sp = SpawnPoint(
+                    position=psp.position,
+                    direction=psp.direction,
+                    waypoints=psp.waypoints,
+                    spread=psp.spread
+                )
+                self.spawn_points.append(sp)
+        else:
+            # Fallback to demo spawn points
+            self.spawn_points = create_demo_spawn_points(
+                self.coord_sys,
+                opposing_flow=self.config.opposing_flow_enabled
+            )
     
     def set_origin(self, origin: GeoPoint):
         """Set the map origin point."""

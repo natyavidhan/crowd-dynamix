@@ -220,10 +220,11 @@ class TestSimulationEngine:
     """Test the main simulation engine."""
     
     @pytest.fixture
-    def engine(self):
-        """Create a simulation engine."""
+    def engine(self, tmp_path):
+        """Create a simulation engine with no venue configs (empty configs dir)."""
         config = SimulationConfig(max_agents=100)
-        return SimulationEngine(config=config)
+        # Use empty tmp_path as configs dir to avoid auto-loading venues
+        return SimulationEngine(config=config, configs_dir=tmp_path)
     
     def test_engine_initialization(self, engine):
         """Engine should initialize with correct state."""

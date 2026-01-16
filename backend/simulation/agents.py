@@ -488,6 +488,7 @@ class SpawnPoint:
     position: Vec2
     direction: float  # radians
     waypoints: List[Vec2]  # path to follow
+    spread: float = 3.0  # random spread radius in meters
 
 
 def spawn_agents_at_rate(

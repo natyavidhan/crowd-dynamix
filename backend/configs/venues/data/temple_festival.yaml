@@ -1,0 +1,287 @@
+# Temple Festival Venue Configuration
+# Religious temple complex with narrow lanes and high-density crowd during festivals
+
+venue:
+  name: "Kapaleeshwarar Temple Festival"
+  location: "Mylapore, Chennai, Tamil Nadu, India"
+  description: "Ancient temple with narrow approach roads, extremely high crowd density during Panguni Peruvizha festival"
+  tags:
+    - temple
+    - religious
+    - festival
+    - high-risk
+
+# Origin point (temple center)
+origin:
+  lat: 13.0337
+  lng: 80.2695
+
+# Simulation boundaries
+bounds:
+  min_x: -200
+  max_x: 200
+  min_y: -200
+  max_y: 200
+
+# Road network (narrow temple lanes)
+roads:
+  - id: "main_mada_street"
+    name: "Main Mada Street"
+    width: 8.0
+    speed_limit: 0.8
+    bidirectional: false
+    centerline:
+      - lat: 13.0317
+        lng: 80.2695
+      - lat: 13.0322
+        lng: 80.2695
+      - lat: 13.0327
+        lng: 80.2695
+      - lat: 13.0332
+        lng: 80.2695
+      - lat: 13.0337
+        lng: 80.2695
+  
+  - id: "north_mada_street"
+    name: "North Mada Street"
+    width: 6.0
+    speed_limit: 0.6
+    bidirectional: true
+    centerline:
+      - lat: 13.0337
+        lng: 80.2695
+      - lat: 13.0342
+        lng: 80.2695
+      - lat: 13.0347
+        lng: 80.2695
+      - lat: 13.0352
+        lng: 80.2695
+  
+  - id: "east_mada_street"
+    name: "East Mada Street"
+    width: 6.0
+    speed_limit: 0.6
+    bidirectional: true
+    centerline:
+      - lat: 13.0337
+        lng: 80.2695
+      - lat: 13.0337
+        lng: 80.2705
+      - lat: 13.0337
+        lng: 80.2715
+  
+  - id: "west_mada_street"
+    name: "West Mada Street"
+    width: 6.0
+    speed_limit: 0.6
+    bidirectional: true
+    centerline:
+      - lat: 13.0337
+        lng: 80.2695
+      - lat: 13.0337
+        lng: 80.2685
+      - lat: 13.0337
+        lng: 80.2675
+  
+  - id: "narrow_lane_1"
+    name: "Narrow Temple Lane 1"
+    width: 3.0
+    speed_limit: 0.4
+    bidirectional: false
+    centerline:
+      - lat: 13.0327
+        lng: 80.2695
+      - lat: 13.0327
+        lng: 80.2700
+      - lat: 13.0332
+        lng: 80.2700
+      - lat: 13.0337
+        lng: 80.2700
+  
+  - id: "narrow_lane_2"
+    name: "Narrow Temple Lane 2"
+    width: 3.0
+    speed_limit: 0.4
+    bidirectional: false
+    centerline:
+      - lat: 13.0327
+        lng: 80.2695
+      - lat: 13.0327
+        lng: 80.2690
+      - lat: 13.0332
+        lng: 80.2690
+      - lat: 13.0337
+        lng: 80.2690
+
+# Exits
+exits:
+  - id: "temple_entrance"
+    name: "Main Temple Entrance"
+    location:
+      lat: 13.0337
+      lng: 80.2695
+    capacity: 200
+  
+  - id: "exit_north"
+    name: "North Exit"
+    location:
+      lat: 13.0352
+      lng: 80.2695
+    capacity: 100
+  
+  - id: "exit_east"
+    name: "East Exit"
+    location:
+      lat: 13.0337
+      lng: 80.2715
+    capacity: 100
+  
+  - id: "exit_west"
+    name: "West Exit"
+    location:
+      lat: 13.0337
+      lng: 80.2675
+    capacity: 100
+
+# Spawn points
+spawn_points:
+  - id: "main_entry"
+    name: "Main Approach Entry"
+    road_id: "main_mada_street"
+    road_position: "start"
+    exit_id: "temple_entrance"
+    rate: 4.0
+    spread: 4.0
+    flow_group: "main_flow"
+  
+  - id: "north_entry"
+    name: "North Street Entry"
+    road_id: "north_mada_street"
+    road_position: "end"
+    exit_id: "temple_entrance"
+    rate: 2.0
+    spread: 3.0
+    flow_group: "north_flow"
+  
+  - id: "east_entry"
+    name: "East Street Entry"
+    road_id: "east_mada_street"
+    road_position: "end"
+    exit_id: "temple_entrance"
+    rate: 2.0
+    spread: 3.0
+    flow_group: "east_flow"
+  
+  - id: "west_entry"
+    name: "West Street Entry"
+    road_id: "west_mada_street"
+    road_position: "end"
+    exit_id: "temple_entrance"
+    rate: 2.0
+    spread: 3.0
+    flow_group: "west_flow"
+  
+  - id: "lane_1_entry"
+    name: "Narrow Lane 1 Entry"
+    road_id: "narrow_lane_1"
+    road_position: "start"
+    exit_id: "temple_entrance"
+    rate: 1.5
+    spread: 1.5
+    flow_group: "lane_1_flow"
+  
+  - id: "lane_2_entry"
+    name: "Narrow Lane 2 Entry"
+    road_id: "narrow_lane_2"
+    road_position: "start"
+    exit_id: "temple_entrance"
+    rate: 1.5
+    spread: 1.5
+    flow_group: "lane_2_flow"
+
+# Choke points (HIGH RISK areas)
+choke_points:
+  - id: "cp_temple_gate"
+    name: "Temple Main Gate"
+    location:
+      lat: 13.0337
+      lng: 80.2695
+    radius: 15.0
+    threshold: 4.0
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+  
+  - id: "cp_main_junction"
+    name: "Main Street Junction"
+    location:
+      lat: 13.0327
+      lng: 80.2695
+    radius: 12.0
+    threshold: 3.5
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+  
+  - id: "cp_narrow_lane_1"
+    name: "Narrow Lane 1 Bottleneck"
+    location:
+      lat: 13.0330
+      lng: 80.2700
+    radius: 8.0
+    threshold: 5.0
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: false
+  
+  - id: "cp_narrow_lane_2"
+    name: "Narrow Lane 2 Bottleneck"
+    location:
+      lat: 13.0330
+      lng: 80.2690
+    radius: 8.0
+    threshold: 5.0
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: false
+  
+  - id: "cp_north_approach"
+    name: "North Approach"
+    location:
+      lat: 13.0347
+      lng: 80.2695
+    radius: 10.0
+    threshold: 3.0
+    mmwave_enabled: true
+    audio_enabled: false
+    camera_enabled: true
+  
+  - id: "cp_east_approach"
+    name: "East Approach"
+    location:
+      lat: 13.0337
+      lng: 80.2710
+    radius: 10.0
+    threshold: 3.0
+    mmwave_enabled: true
+    audio_enabled: false
+    camera_enabled: true
+  
+  - id: "cp_west_approach"
+    name: "West Approach"
+    location:
+      lat: 13.0337
+      lng: 80.2680
+    radius: 10.0
+    threshold: 3.0
+    mmwave_enabled: true
+    audio_enabled: false
+    camera_enabled: true
+
+# Default simulation parameters (festival conditions)
+defaults:
+  agent_count: 250
+  spawn_rate: 0.6
+  agent_speed: 0.7
+  perturbation_enabled: false
+  perturbation_intensity: 0.0

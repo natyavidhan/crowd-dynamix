@@ -1,0 +1,254 @@
+# Stadium Event Venue Configuration
+# Sports stadium with controlled entry gates and radial seating access
+
+venue:
+  name: "City Sports Stadium"
+  location: "Chennai, Tamil Nadu, India"
+  description: "50,000 capacity stadium for cricket and football matches with multiple entry gates"
+  tags:
+    - stadium
+    - sports
+    - controlled-access
+
+# Origin point (stadium center)
+origin:
+  lat: 13.0627
+  lng: 80.2340
+
+# Simulation boundaries
+bounds:
+  min_x: -250
+  max_x: 250
+  min_y: -250
+  max_y: 250
+
+# Road network (entry corridors)
+roads:
+  - id: "gate_a_corridor"
+    name: "Gate A Entry Corridor"
+    width: 12.0
+    speed_limit: 1.0
+    bidirectional: false
+    centerline:
+      - lat: 13.0647
+        lng: 80.2340
+      - lat: 13.0642
+        lng: 80.2340
+      - lat: 13.0637
+        lng: 80.2340
+      - lat: 13.0632
+        lng: 80.2340
+  
+  - id: "gate_b_corridor"
+    name: "Gate B Entry Corridor"
+    width: 12.0
+    speed_limit: 1.0
+    bidirectional: false
+    centerline:
+      - lat: 13.0627
+        lng: 80.2360
+      - lat: 13.0627
+        lng: 80.2355
+      - lat: 13.0627
+        lng: 80.2350
+      - lat: 13.0627
+        lng: 80.2345
+  
+  - id: "gate_c_corridor"
+    name: "Gate C Entry Corridor"
+    width: 12.0
+    speed_limit: 1.0
+    bidirectional: false
+    centerline:
+      - lat: 13.0607
+        lng: 80.2340
+      - lat: 13.0612
+        lng: 80.2340
+      - lat: 13.0617
+        lng: 80.2340
+      - lat: 13.0622
+        lng: 80.2340
+  
+  - id: "gate_d_corridor"
+    name: "Gate D Entry Corridor"
+    width: 12.0
+    speed_limit: 1.0
+    bidirectional: false
+    centerline:
+      - lat: 13.0627
+        lng: 80.2320
+      - lat: 13.0627
+        lng: 80.2325
+      - lat: 13.0627
+        lng: 80.2330
+      - lat: 13.0627
+        lng: 80.2335
+  
+  - id: "inner_concourse"
+    name: "Inner Concourse Ring"
+    width: 8.0
+    speed_limit: 0.8
+    bidirectional: true
+    centerline:
+      - lat: 13.0632
+        lng: 80.2340
+      - lat: 13.0630
+        lng: 80.2345
+      - lat: 13.0627
+        lng: 80.2347
+      - lat: 13.0624
+        lng: 80.2345
+      - lat: 13.0622
+        lng: 80.2340
+      - lat: 13.0624
+        lng: 80.2335
+      - lat: 13.0627
+        lng: 80.2333
+      - lat: 13.0630
+        lng: 80.2335
+      - lat: 13.0632
+        lng: 80.2340
+
+# Exits (seating sections)
+exits:
+  - id: "stand_north"
+    name: "North Stand"
+    location:
+      lat: 13.0632
+      lng: 80.2340
+    capacity: 12500
+  
+  - id: "stand_east"
+    name: "East Stand"
+    location:
+      lat: 13.0627
+      lng: 80.2345
+    capacity: 12500
+  
+  - id: "stand_south"
+    name: "South Stand"
+    location:
+      lat: 13.0622
+      lng: 80.2340
+    capacity: 12500
+  
+  - id: "stand_west"
+    name: "West Stand"
+    location:
+      lat: 13.0627
+      lng: 80.2335
+    capacity: 12500
+
+# Spawn points
+spawn_points:
+  - id: "gate_a_entry"
+    name: "Gate A Entry"
+    road_id: "gate_a_corridor"
+    road_position: "start"
+    exit_id: "stand_north"
+    rate: 5.0
+    spread: 6.0
+    flow_group: "gate_a"
+  
+  - id: "gate_b_entry"
+    name: "Gate B Entry"
+    road_id: "gate_b_corridor"
+    road_position: "start"
+    exit_id: "stand_east"
+    rate: 5.0
+    spread: 6.0
+    flow_group: "gate_b"
+  
+  - id: "gate_c_entry"
+    name: "Gate C Entry"
+    road_id: "gate_c_corridor"
+    road_position: "start"
+    exit_id: "stand_south"
+    rate: 5.0
+    spread: 6.0
+    flow_group: "gate_c"
+  
+  - id: "gate_d_entry"
+    name: "Gate D Entry"
+    road_id: "gate_d_corridor"
+    road_position: "start"
+    exit_id: "stand_west"
+    rate: 5.0
+    spread: 6.0
+    flow_group: "gate_d"
+
+# Choke points (security and bottleneck areas)
+choke_points:
+  - id: "cp_gate_a"
+    name: "Gate A Security"
+    location:
+      lat: 13.0642
+      lng: 80.2340
+    radius: 15.0
+    threshold: 3.5
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+  
+  - id: "cp_gate_b"
+    name: "Gate B Security"
+    location:
+      lat: 13.0627
+      lng: 80.2355
+    radius: 15.0
+    threshold: 3.5
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+  
+  - id: "cp_gate_c"
+    name: "Gate C Security"
+    location:
+      lat: 13.0612
+      lng: 80.2340
+    radius: 15.0
+    threshold: 3.5
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+  
+  - id: "cp_gate_d"
+    name: "Gate D Security"
+    location:
+      lat: 13.0627
+      lng: 80.2325
+    radius: 15.0
+    threshold: 3.5
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+  
+  - id: "cp_concourse_north"
+    name: "North Concourse Junction"
+    location:
+      lat: 13.0632
+      lng: 80.2340
+    radius: 12.0
+    threshold: 4.0
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: false
+  
+  - id: "cp_concourse_east"
+    name: "East Concourse Junction"
+    location:
+      lat: 13.0627
+      lng: 80.2347
+    radius: 12.0
+    threshold: 4.0
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: false
+
+# Default simulation parameters
+defaults:
+  agent_count: 200
+  spawn_rate: 0.8
+  agent_speed: 1.0
+  perturbation_enabled: false
+  perturbation_intensity: 0.0
