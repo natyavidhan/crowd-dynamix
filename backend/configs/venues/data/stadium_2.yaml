@@ -1,0 +1,113 @@
+venue:
+  name: Mayor Radhakrishnana Stadium
+  location: Chennai
+  description: 'Stadium venue with connected road network'
+
+origin:
+  lat: 13.075679491666543
+  lng: 80.26144087314607
+
+roads:
+  # Main road connecting south spawn area to exit
+  - id: road_main_south_north
+    name: Main Road (S-N)
+    width: 15
+    speed_limit: 1.5
+    bidirectional: true
+    centerline:
+      # Start near Spawn 1 (south)
+      - lat: 13.074373155741524
+        lng: 80.25908052921297
+      # Go north along the road
+      - lat: 13.074700
+        lng: 80.25920
+      - lat: 13.075100
+        lng: 80.25935
+      - lat: 13.075400
+        lng: 80.25940
+      # End near Exit (north)
+      - lat: 13.075757871602072
+        lng: 80.25947749614717
+
+  # Secondary road from east
+  - id: road_east_connector
+    name: East Connector
+    width: 12
+    speed_limit: 1.5
+    bidirectional: true
+    centerline:
+      # Start from east (stadium area)
+      - lat: 13.075042000599295
+        lng: 80.26155352592468
+      - lat: 13.075100
+        lng: 80.26050
+      - lat: 13.075200
+        lng: 80.25980
+      # Connect to main road near exit
+      - lat: 13.075400
+        lng: 80.25940
+
+exits:
+  - id: exit_north
+    name: Exit 1
+    location:
+      lat: 13.075757871602072
+      lng: 80.25947749614717
+    capacity: 100
+
+spawn_points:
+  - id: spawn_south
+    name: Spawn 1 (South)
+    location:
+      lat: 13.074373155741524
+      lng: 80.25908052921297
+    rate: 5
+    spread: 3
+    flow_group: default
+    exit_id: exit_north
+
+  - id: spawn_near_exit
+    name: Spawn 2 (Near Exit)
+    location:
+      lat: 13.075500
+      lng: 80.25945
+    rate: 5
+    spread: 3
+    flow_group: default
+    exit_id: exit_north
+
+choke_points:
+  - id: choke_main_road
+    name: Main Road Choke
+    location:
+      lat: 13.075100
+      lng: 80.25935
+    radius: 25
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+
+  - id: choke_east
+    name: East Connector Choke
+    location:
+      lat: 13.075042000599295
+      lng: 80.26155352592468
+    radius: 25
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+
+  - id: choke_exit
+    name: Exit Area Choke
+    location:
+      lat: 13.075679491666543
+      lng: 80.25946676731111
+    radius: 25
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+
+defaults:
+  agent_count: 300
+  spawn_rate: 8
+  speed_multiplier: 1

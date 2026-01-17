@@ -1,7 +1,6 @@
 """
 Main simulation engine.
-Coordinates agents, sensors, and CII computation.
-Runs the simulation loop and broadcasts state.
+Coordinates road-constrained agents, sensors, and CII computation.
 """
 
 import asyncio
@@ -15,16 +14,19 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.vector import vec2, Vec2, from_angle
+from utils.vector import vec2, Vec2, from_angle, magnitude
 from models.types import (
     ChokePoint, SimulationConfig, SimulationState, AgentSnapshot,
     AggregatedSensorData, CIIExplanation, GeoPoint, SimPoint,
     SensorConfig, SensorType, CircleGeometry, RiskState
 )
-from simulation.agents import (
-    AgentPool, SpatialHash, SpawnPoint, 
-    update_agents, spawn_agents_at_rate
+
+# New road-constrained movement system
+from simulation.road_movement import (
+    RoadAgentPool, RoadNetworkManager, RoadSegment, RoadSpawnPoint,
+    update_road_agents, spawn_road_agents
 )
+
 from simulation.sensors import SensorBuffers, simulate_all_sensors
 from simulation.cii import update_risk_state, DEFAULT_WEIGHTS
 
@@ -40,126 +42,23 @@ from configs.venues import VenueConfig, VenueLoader, list_available_venues, load
 class CoordinateSystem:
     """Handles geo <-> simulation coordinate conversion."""
     
-    origin: GeoPoint  # Reference point (becomes 0,0 in sim coords)
+    origin: GeoPoint
     meters_per_deg_lat: float = 111320.0
-    meters_per_deg_lng: float = 111320.0  # Adjusted by latitude
+    meters_per_deg_lng: float = 111320.0
     
     def __post_init__(self):
-        # Adjust longitude scale by latitude
         lat_rad = np.radians(self.origin.lat)
         self.meters_per_deg_lng = 111320.0 * np.cos(lat_rad)
     
     def geo_to_sim(self, geo: GeoPoint) -> SimPoint:
-        """Convert geographic to simulation coordinates."""
         x = (geo.lng - self.origin.lng) * self.meters_per_deg_lng
         y = (geo.lat - self.origin.lat) * self.meters_per_deg_lat
         return SimPoint(x=x, y=y)
     
     def sim_to_geo(self, sim: SimPoint) -> GeoPoint:
-        """Convert simulation to geographic coordinates."""
         lng = self.origin.lng + sim.x / self.meters_per_deg_lng
         lat = self.origin.lat + sim.y / self.meters_per_deg_lat
         return GeoPoint(lat=lat, lng=lng)
-
-
-# ============================================================================
-# Demo Scenario Configuration
-# ============================================================================
-
-def create_demo_spawn_points(
-    coord_sys: CoordinateSystem,
-    opposing_flow: bool = False
-) -> List[SpawnPoint]:
-    """Create spawn points for demo scenario."""
-    
-    # Main flow: spawn from bottom, move to top
-    main_spawn = vec2(0, -50)  # 50m south of origin
-    main_waypoints = [
-        vec2(0, 0),     # through center
-        vec2(0, 50),    # to north
-        vec2(0, 100),   # exit
-    ]
-    
-    spawn_points = [
-        SpawnPoint(
-            position=main_spawn,
-            direction=np.pi / 2,  # north
-            waypoints=main_waypoints
-        ),
-        # Second spawn slightly offset
-        SpawnPoint(
-            position=vec2(-10, -50),
-            direction=np.pi / 2,
-            waypoints=[vec2(-5, 0), vec2(0, 50), vec2(5, 100)]
-        ),
-        SpawnPoint(
-            position=vec2(10, -50),
-            direction=np.pi / 2,
-            waypoints=[vec2(5, 0), vec2(0, 50), vec2(-5, 100)]
-        ),
-    ]
-    
-    if opposing_flow:
-        # Add counter-flow from top
-        opposing_spawn = vec2(0, 100)
-        opposing_waypoints = [
-            vec2(0, 50),
-            vec2(0, 0),
-            vec2(0, -50),
-        ]
-        spawn_points.append(SpawnPoint(
-            position=opposing_spawn,
-            direction=-np.pi / 2,  # south
-            waypoints=opposing_waypoints
-        ))
-    
-    return spawn_points
-
-
-def create_demo_choke_points(coord_sys: CoordinateSystem) -> List[ChokePoint]:
-    """Create default choke points for demo."""
-    
-    return [
-        ChokePoint(
-            id="cp_entrance",
-            name="Main Entrance",
-            center=coord_sys.sim_to_geo(SimPoint(x=0, y=-30)),
-            geometry=CircleGeometry(radius=15),
-            sensors=[
-                SensorConfig(type=SensorType.MMWAVE, enabled=True),
-                SensorConfig(type=SensorType.AUDIO, enabled=True),
-                SensorConfig(type=SensorType.CAMERA, enabled=True),
-            ],
-            sim_center=SimPoint(x=0, y=-30),
-            sim_radius=15
-        ),
-        ChokePoint(
-            id="cp_junction",
-            name="Central Junction",
-            center=coord_sys.sim_to_geo(SimPoint(x=0, y=0)),
-            geometry=CircleGeometry(radius=20),
-            sensors=[
-                SensorConfig(type=SensorType.MMWAVE, enabled=True),
-                SensorConfig(type=SensorType.AUDIO, enabled=True),
-                SensorConfig(type=SensorType.CAMERA, enabled=True),
-            ],
-            sim_center=SimPoint(x=0, y=0),
-            sim_radius=20
-        ),
-        ChokePoint(
-            id="cp_exit",
-            name="North Exit",
-            center=coord_sys.sim_to_geo(SimPoint(x=0, y=50)),
-            geometry=CircleGeometry(radius=15),
-            sensors=[
-                SensorConfig(type=SensorType.MMWAVE, enabled=True),
-                SensorConfig(type=SensorType.AUDIO, enabled=True),
-                SensorConfig(type=SensorType.CAMERA, enabled=True),
-            ],
-            sim_center=SimPoint(x=0, y=50),
-            sim_radius=15
-        ),
-    ]
 
 
 # ============================================================================
@@ -173,10 +72,93 @@ class VenueInfo:
     name: str
     location: str
     description: str
-    roads: List[Dict]  # Road geometries in geo coordinates
+    roads: List[Dict]
     spawn_point_count: int
     choke_point_count: int
-    origin: Dict  # Origin point {lat, lng} for coordinate conversion
+    origin: Dict
+
+
+# ============================================================================
+# Agent Pool Adapter (for sensor compatibility)
+# ============================================================================
+
+class AgentPoolAdapter:
+    """
+    Adapts RoadAgentPool to match the interface expected by sensors.
+    Provides positions, velocities, states arrays.
+    """
+    def __init__(self, road_pool: RoadAgentPool):
+        self.road_pool = road_pool
+        self._update_cache()
+    
+    def _update_cache(self):
+        """Update cached arrays from road agents."""
+        agents = list(self.road_pool.agents.values())
+        n = len(agents)
+        
+        if n == 0:
+            self._positions = np.zeros((0, 2))
+            self._velocities = np.zeros((0, 2))
+            self._states = np.zeros(0, dtype=np.int32)
+            self._ids = np.zeros(0, dtype=np.int32)
+            self._active = np.zeros(0, dtype=bool)
+            self.count = 0
+            return
+        
+        self._positions = np.zeros((n, 2))
+        self._velocities = np.zeros((n, 2))
+        self._states = np.zeros(n, dtype=np.int32)
+        self._ids = np.zeros(n, dtype=np.int32)
+        self._active = np.ones(n, dtype=bool)
+        
+        for i, agent in enumerate(agents):
+            pos = agent.get_world_position(self.road_pool.network.roads)
+            self._positions[i] = [pos[0], pos[1]]
+            
+            # Compute velocity from speed and road direction
+            road = self.road_pool.network.roads.get(agent.road_id)
+            if road:
+                direction = road.direction_at_distance(agent.distance_along)
+                vel = direction * agent.speed * agent.direction
+                self._velocities[i] = [vel[0], vel[1]]
+            
+            # State: 0=moving, 1=slowing, 2=stopped
+            if agent.waiting or agent.speed < 0.1:
+                self._states[i] = 2  # stopped
+            elif agent.speed < agent.target_speed * 0.5:
+                self._states[i] = 1  # slowing
+            else:
+                self._states[i] = 0  # moving
+            
+            self._ids[i] = agent.id
+        
+        self.count = n
+    
+    @property
+    def positions(self):
+        return self._positions
+    
+    @property
+    def velocities(self):
+        return self._velocities
+    
+    @property
+    def states(self):
+        return self._states
+    
+    @property
+    def ids(self):
+        return self._ids
+    
+    @property
+    def active(self):
+        return self._active
+    
+    def get_active_indices(self):
+        return np.arange(self.count)
+    
+    def get_positions(self):
+        return self._positions
 
 
 # ============================================================================
@@ -185,30 +167,35 @@ class VenueInfo:
 
 @dataclass
 class SimulationEngine:
-    """Main simulation engine that coordinates all subsystems."""
+    """Main simulation engine using road-constrained movement."""
     
-    # Configuration
     config: SimulationConfig = field(default_factory=SimulationConfig)
     coord_sys: CoordinateSystem = field(default_factory=lambda: CoordinateSystem(
-        origin=GeoPoint(lat=12.9716, lng=77.5946)  # Default: Bangalore
+        origin=GeoPoint(lat=12.9716, lng=77.5946)
     ))
     
-    # Venue config directory
     configs_dir: Path = field(default_factory=lambda: Path(__file__).parent.parent / "configs" / "venues")
     
-    # Current venue
     current_venue: Optional[VenueConfig] = None
     current_venue_id: Optional[str] = None
     venue_loader: Optional[VenueLoader] = None
     
-    # Subsystems
-    agent_pool: AgentPool = field(init=False)
-    spatial_hash: SpatialHash = field(init=False)
+    # Road-constrained agent system
+    road_network: RoadNetworkManager = field(default_factory=RoadNetworkManager)
+    road_agent_pool: Optional[RoadAgentPool] = None
+    road_spawn_points: List[RoadSpawnPoint] = field(default_factory=list)
+    
+    # Adapter for sensor compatibility
+    agent_pool_adapter: Optional[AgentPoolAdapter] = None
+    
+    # Legacy compatibility
+    agent_pool: Optional[object] = None
+    
+    # Sensor system
     sensor_buffers: SensorBuffers = field(init=False)
     
     # State
     choke_points: List[ChokePoint] = field(default_factory=list)
-    spawn_points: List[SpawnPoint] = field(default_factory=list)
     sensor_data: Dict[str, AggregatedSensorData] = field(default_factory=dict)
     cii_explanations: Dict[str, CIIExplanation] = field(default_factory=dict)
     
@@ -225,23 +212,101 @@ class SimulationEngine:
     on_state_update: Optional[Callable[[SimulationState], Awaitable[None]]] = None
     
     def __post_init__(self):
-        self.agent_pool = AgentPool(max_agents=self.config.max_agents)
-        self.spatial_hash = SpatialHash(cell_size=3.0)
         self.sensor_buffers = SensorBuffers()
         
-        # Try to load default venue, fallback to demo scenario
+        # Try to load default venue
         if not self._try_load_default_venue():
-            self.spawn_points = create_demo_spawn_points(self.coord_sys)
-            self.choke_points = create_demo_choke_points(self.coord_sys)
+            self._setup_demo_scenario()
     
     def _try_load_default_venue(self) -> bool:
         """Try to load a default venue config."""
         venues = list_available_venues(self.configs_dir)
         if venues:
-            # Load first available venue (marina_beach is alphabetically first)
             first_venue = sorted(venues, key=lambda v: v['id'])[0]
             return self.load_venue(first_venue['id'])
         return False
+    
+    def _setup_demo_scenario(self):
+        """Setup a simple demo scenario with roads."""
+        # Create a simple road network
+        self.road_network = RoadNetworkManager()
+        
+        # Main road going north
+        main_road = RoadSegment(
+            id="main_road",
+            name="Main Road",
+            width=6.0,
+            speed_limit=1.4,
+            bidirectional=True,
+            centerline=[
+                vec2(0, -50),
+                vec2(0, 0),
+                vec2(0, 50),
+                vec2(0, 100)
+            ]
+        )
+        self.road_network.add_road(main_road)
+        
+        # Add exit at end
+        self.road_network.add_exit("exit_north", vec2(0, 100))
+        
+        # Build connections
+        self.road_network.build_connections()
+        
+        # Create agent pool
+        self.road_agent_pool = RoadAgentPool(
+            max_agents=self.config.max_agents,
+            network=self.road_network
+        )
+        
+        # Create spawn points
+        self.road_spawn_points = [
+            RoadSpawnPoint(
+                id="spawn_south",
+                road_id="main_road",
+                distance_along=0,
+                target_exit_id="exit_north",
+                rate=5.0
+            )
+        ]
+        
+        # Setup adapter
+        self.agent_pool_adapter = AgentPoolAdapter(self.road_agent_pool)
+        self.agent_pool = self.agent_pool_adapter
+        
+        # Create demo choke points
+        self.choke_points = self._create_demo_choke_points()
+    
+    def _create_demo_choke_points(self) -> List[ChokePoint]:
+        """Create default choke points for demo."""
+        return [
+            ChokePoint(
+                id="cp_entrance",
+                name="Main Entrance",
+                center=self.coord_sys.sim_to_geo(SimPoint(x=0, y=-30)),
+                geometry=CircleGeometry(radius=15),
+                sensors=[
+                    SensorConfig(type=SensorType.MMWAVE, enabled=True),
+                    SensorConfig(type=SensorType.AUDIO, enabled=True),
+                    SensorConfig(type=SensorType.CAMERA, enabled=True),
+                ],
+                sim_center=SimPoint(x=0, y=-30),
+                sim_radius=15
+            ),
+            ChokePoint(
+                id="cp_junction",
+                name="Central Junction",
+                center=self.coord_sys.sim_to_geo(SimPoint(x=0, y=0)),
+                geometry=CircleGeometry(radius=20),
+                sensors=[
+                    SensorConfig(type=SensorType.MMWAVE, enabled=True),
+                    SensorConfig(type=SensorType.AUDIO, enabled=True),
+                    SensorConfig(type=SensorType.CAMERA, enabled=True),
+                ],
+                sim_center=SimPoint(x=0, y=0),
+                sim_radius=20
+            ),
+        ]
     
     def get_available_venues(self) -> List[Dict]:
         """Get list of available venue configurations."""
@@ -262,19 +327,11 @@ class SimulationEngine:
             origin=GeoPoint(lat=config.origin.lat, lng=config.origin.lng)
         )
         
-        # Load choke points from venue
-        self.choke_points = self.venue_loader.choke_points
+        # Build road network from venue config
+        self._build_road_network_from_venue()
         
-        # Load spawn points from venue
-        self.spawn_points = []
-        for psp in self.venue_loader.spawn_points:
-            sp = SpawnPoint(
-                position=psp.position,
-                direction=psp.direction,
-                waypoints=psp.waypoints,
-                spread=psp.spread
-            )
-            self.spawn_points.append(sp)
+        # Load choke points
+        self.choke_points = self.venue_loader.choke_points
         
         # Apply venue defaults to config
         if config.defaults:
@@ -288,6 +345,75 @@ class SimulationEngine:
         
         return True
     
+    def _build_road_network_from_venue(self):
+        """Build road network from venue loader."""
+        if not self.venue_loader:
+            return
+        
+        self.road_network = RoadNetworkManager()
+        
+        # Convert roads from venue loader
+        for road in self.venue_loader.road_network.get_all_roads():
+            road_segment = RoadSegment(
+                id=road.id,
+                name=road.name,
+                width=road.width,
+                speed_limit=road.speed_limit,
+                bidirectional=road.bidirectional,
+                centerline=road.centerline
+            )
+            self.road_network.add_road(road_segment)
+        
+        # Add exits
+        for exit_id, exit_pos in self.venue_loader.exits.items():
+            self.road_network.add_exit(exit_id, exit_pos)
+        
+        # Build connections
+        self.road_network.build_connections()
+        
+        # Create spawn points on roads
+        self.road_spawn_points = []
+        for psp in self.venue_loader.spawn_points:
+            # Find the road this spawn point is on
+            result = self.road_network.find_nearest_road(psp.position)
+            if result:
+                road_id, dist_along, perp_dist = result
+                
+                # Determine target exit
+                target_exit_id = None
+                if psp.waypoints and len(psp.waypoints) > 1:
+                    # Find exit nearest to last waypoint
+                    last_wp = psp.waypoints[-1]
+                    min_exit_dist = float('inf')
+                    for exit_id, exit_pos in self.road_network.exits.items():
+                        d = magnitude(last_wp - exit_pos)
+                        if d < min_exit_dist:
+                            min_exit_dist = d
+                            target_exit_id = exit_id
+                
+                # If no exit found from waypoints, use first exit
+                if target_exit_id is None and self.road_network.exits:
+                    target_exit_id = list(self.road_network.exits.keys())[0]
+                
+                spawn_point = RoadSpawnPoint(
+                    id=psp.id,
+                    road_id=road_id,
+                    distance_along=dist_along,
+                    target_exit_id=target_exit_id,
+                    rate=psp.rate
+                )
+                self.road_spawn_points.append(spawn_point)
+        
+        # Create agent pool
+        self.road_agent_pool = RoadAgentPool(
+            max_agents=self.config.max_agents,
+            network=self.road_network
+        )
+        
+        # Setup adapter
+        self.agent_pool_adapter = AgentPoolAdapter(self.road_agent_pool)
+        self.agent_pool = self.agent_pool_adapter
+    
     def get_current_venue_info(self) -> Optional[VenueInfo]:
         """Get info about currently loaded venue."""
         if not self.current_venue or not self.venue_loader:
@@ -299,7 +425,7 @@ class SimulationEngine:
             location=self.current_venue.venue.location,
             description=self.current_venue.venue.description or "",
             roads=self.venue_loader.get_road_geometries_geo(),
-            spawn_point_count=len(self.spawn_points),
+            spawn_point_count=len(self.road_spawn_points),
             choke_point_count=len(self.choke_points),
             origin={
                 "lat": self.current_venue.origin.lat,
@@ -309,7 +435,15 @@ class SimulationEngine:
     
     def reset(self):
         """Reset simulation to initial state."""
-        self.agent_pool = AgentPool(max_agents=self.config.max_agents)
+        # Recreate road agent pool
+        if self.road_network:
+            self.road_agent_pool = RoadAgentPool(
+                max_agents=self.config.max_agents,
+                network=self.road_network
+            )
+            self.agent_pool_adapter = AgentPoolAdapter(self.road_agent_pool)
+            self.agent_pool = self.agent_pool_adapter
+        
         self.sensor_buffers = SensorBuffers()
         self.sensor_data.clear()
         self.cii_explanations.clear()
@@ -318,24 +452,6 @@ class SimulationEngine:
         # Reset choke point risk states
         for cp in self.choke_points:
             cp.risk_state = RiskState()
-        
-        # If we have a loaded venue, use its spawn points
-        if self.venue_loader:
-            self.spawn_points = []
-            for psp in self.venue_loader.spawn_points:
-                sp = SpawnPoint(
-                    position=psp.position,
-                    direction=psp.direction,
-                    waypoints=psp.waypoints,
-                    spread=psp.spread
-                )
-                self.spawn_points.append(sp)
-        else:
-            # Fallback to demo spawn points
-            self.spawn_points = create_demo_spawn_points(
-                self.coord_sys,
-                opposing_flow=self.config.opposing_flow_enabled
-            )
     
     def set_origin(self, origin: GeoPoint):
         """Set the map origin point."""
@@ -344,7 +460,6 @@ class SimulationEngine:
     
     def add_choke_point(self, choke_point: ChokePoint):
         """Add a new choke point."""
-        # Convert geo to sim coordinates
         choke_point.sim_center = self.coord_sys.geo_to_sim(choke_point.center)
         if hasattr(choke_point.geometry, 'radius'):
             choke_point.sim_radius = choke_point.geometry.radius
@@ -361,17 +476,13 @@ class SimulationEngine:
         for key, value in kwargs.items():
             if hasattr(self.config, key):
                 setattr(self.config, key, value)
-        
-        # Handle special cases
-        if 'opposing_flow_enabled' in kwargs:
-            self.spawn_points = create_demo_spawn_points(
-                self.coord_sys,
-                opposing_flow=self.config.opposing_flow_enabled
-            )
     
     def step(self, dt: float):
         """Advance simulation by dt seconds."""
         if not self.config.running:
+            return
+        
+        if not self.road_agent_pool:
             return
         
         # Apply speed multiplier
@@ -380,27 +491,33 @@ class SimulationEngine:
         # Spawn new agents
         inflow_rate = self.config.base_inflow_rate * self.config.current_inflow_multiplier
         
-        # Density surge doubles inflow
         if self.config.density_surge_enabled:
             inflow_rate *= 2.0
         
-        spawn_agents_at_rate(
-            self.agent_pool,
-            self.spawn_points,
-            inflow_rate,
+        # Spawn on roads
+        spawn_road_agents(
+            self.road_agent_pool,
+            self.road_spawn_points,
             effective_dt,
             self.rng
         )
         
-        # Update agent physics
-        update_agents(self.agent_pool, self.spatial_hash, effective_dt)
+        # Update road-constrained agents
+        update_road_agents(self.road_agent_pool, effective_dt)
+        
+        # Update adapter cache
+        if self.agent_pool_adapter:
+            self.agent_pool_adapter._update_cache()
         
         self.tick += 1
     
     def sample_sensors(self):
         """Sample sensor data for all choke points."""
+        if not self.agent_pool_adapter:
+            return
+        
         for cp in self.choke_points:
-            sensor_data = simulate_all_sensors(cp, self.agent_pool, self.sensor_buffers)
+            sensor_data = simulate_all_sensors(cp, self.agent_pool_adapter, self.sensor_buffers)
             self.sensor_data[cp.id] = sensor_data
     
     def compute_cii(self):
@@ -419,32 +536,28 @@ class SimulationEngine:
             cp.risk_state = new_state
             self.cii_explanations[cp.id] = explanation
     
-    # Pre-computed state map for performance
     _state_map = {0: "moving", 1: "slowing", 2: "stopped", 3: "pushing"}
     
     def get_state(self) -> SimulationState:
         """Get current simulation state for broadcasting."""
-        # Convert agents to snapshots using list comprehension for speed
-        indices = self.agent_pool.get_active_indices()
-        positions = self.agent_pool.positions
-        velocities = self.agent_pool.velocities
-        states = self.agent_pool.states
-        ids = self.agent_pool.ids
-        state_map = self._state_map
+        agent_snapshots = []
         
-        agent_snapshots = [
-            AgentSnapshot(
-                id=int(ids[idx]),
-                x=float(positions[idx, 0]),
-                y=float(positions[idx, 1]),
-                vx=float(velocities[idx, 0]),
-                vy=float(velocities[idx, 1]),
-                state=state_map.get(states[idx], "moving")
-            )
-            for idx in indices
-        ]
+        if self.road_agent_pool and self.agent_pool_adapter:
+            positions = self.agent_pool_adapter.positions
+            velocities = self.agent_pool_adapter.velocities
+            states = self.agent_pool_adapter.states
+            ids = self.agent_pool_adapter.ids
+            
+            for i in range(self.agent_pool_adapter.count):
+                agent_snapshots.append(AgentSnapshot(
+                    id=int(ids[i]),
+                    x=float(positions[i, 0]),
+                    y=float(positions[i, 1]),
+                    vx=float(velocities[i, 0]),
+                    vy=float(velocities[i, 1]),
+                    state=self._state_map.get(states[i], "moving")
+                ))
         
-        # Include origin from coordinate system
         origin = GeoPoint(
             lat=self.coord_sys.origin.lat,
             lng=self.coord_sys.origin.lng
@@ -465,12 +578,9 @@ class SimulationEngine:
         target_fps: float = 60.0,
         sensor_hz: float = 10.0,
         cii_hz: float = 1.0,
-        broadcast_hz: float = 15.0  # Reduced from 30Hz for better performance
+        broadcast_hz: float = 15.0
     ):
-        """
-        Main simulation loop.
-        Runs until config.running is set to False.
-        """
+        """Main simulation loop."""
         frame_time = 1.0 / target_fps
         sensor_interval = 1.0 / sensor_hz
         cii_interval = 1.0 / cii_hz
@@ -481,33 +591,27 @@ class SimulationEngine:
         while True:
             loop_start = time.time()
             
-            # Calculate dt
             now = time.time()
             dt = now - self.last_update
             self.last_update = now
             
-            # Simulation step
             if self.config.running:
                 self.step(dt)
             
-            # Sensor sampling (10 Hz)
             if now - self.last_sensor_sample >= sensor_interval:
                 self.sample_sensors()
                 self.last_sensor_sample = now
             
-            # CII computation (1 Hz)
             if now - self.last_cii_compute >= cii_interval:
                 self.compute_cii()
                 self.last_cii_compute = now
             
-            # Broadcast state (30 Hz)
             if now - last_broadcast >= broadcast_interval:
                 if self.on_state_update:
                     state = self.get_state()
                     await self.on_state_update(state)
                 last_broadcast = now
             
-            # Frame timing
             elapsed = time.time() - loop_start
             sleep_time = max(0, frame_time - elapsed)
             await asyncio.sleep(sleep_time)

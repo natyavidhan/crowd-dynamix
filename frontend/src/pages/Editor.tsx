@@ -91,6 +91,9 @@ function createEmptyVenue(): VenueData {
 // ============================================================================
 
 function exportToYAML(data: VenueData): string {
+  // Find first exit (default destination for spawn points)
+  const defaultExitId = data.exits.length > 0 ? data.exits[0].id : null;
+  
   const yamlData = {
     venue: data.venue,
     origin: data.origin,
@@ -115,6 +118,8 @@ function exportToYAML(data: VenueData): string {
       rate: s.rate,
       spread: 3.0,
       flow_group: 'default',
+      // Link spawn to exit so agents have a destination
+      ...(defaultExitId ? { exit_id: defaultExitId } : {}),
     })),
     choke_points: data.chokePoints.map(c => ({
       id: c.id,

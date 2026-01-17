@@ -134,6 +134,44 @@ class Road:
             waypoints = waypoints[::-1]
         
         return waypoints
+    
+    def get_distance_along(self, pos: Vec2) -> float:
+        """Get the distance along the road for a point (assumes point is on or near road)."""
+        _, road_dist, _ = self.nearest_point(pos)
+        return road_dist
+    
+    def nearest_point(self, pos: Vec2) -> Tuple[Vec2, float, int]:
+        """
+        Find the nearest point on this road to a given position.
+        Returns (point, distance_along_road, perpendicular_distance).
+        """
+        min_dist = float('inf')
+        best_point = self.centerline[0]
+        best_road_dist = 0.0
+        
+        cumulative_dist = 0.0
+        for start, end, seg_length in self.segments:
+            if seg_length == 0:
+                cumulative_dist += seg_length
+                continue
+            
+            # Project pos onto line segment
+            seg_vec = end - start
+            pos_vec = pos - start
+            t = np.dot(pos_vec, seg_vec) / (seg_length * seg_length)
+            t = max(0, min(1, t))
+            
+            proj = start + seg_vec * t
+            dist = magnitude(pos - proj)
+            
+            if dist < min_dist:
+                min_dist = dist
+                best_point = proj
+                best_road_dist = cumulative_dist + t * seg_length
+            
+            cumulative_dist += seg_length
+        
+        return best_point, best_road_dist, min_dist
 
 
 @dataclass
@@ -149,6 +187,158 @@ class RoadNetwork:
     
     def get_all_roads(self) -> List[Road]:
         return list(self.roads.values())
+    
+    def find_nearest_road(self, pos: Vec2) -> Optional[Tuple[Road, Vec2, float]]:
+        """
+        Find the nearest road to a position.
+        Returns (road, nearest_point_on_road, distance_along_road) or None.
+        """
+        if not self.roads:
+            return None
+        
+        best_road = None
+        best_point = None
+        best_road_dist = 0.0
+        min_perp_dist = float('inf')
+        
+        for road in self.roads.values():
+            point, road_dist, perp_dist = road.nearest_point(pos)
+            if perp_dist < min_perp_dist:
+                min_perp_dist = perp_dist
+                best_road = road
+                best_point = point
+                best_road_dist = road_dist
+        
+        if best_road:
+            return best_road, best_point, best_road_dist
+        return None
+    
+    def find_path_to_exit(self, start_pos: Vec2, exit_pos: Vec2, spacing: float = 10.0) -> List[Vec2]:
+        """
+        Find a path from start_pos to exit_pos via roads.
+        Tries to use roads that form a connected path; falls back to direct path if not possible.
+        """
+        # Find nearest road to start
+        start_result = self.find_nearest_road(start_pos)
+        if not start_result:
+            return [start_pos.copy(), exit_pos.copy()]
+        
+        start_road, _, start_road_dist = start_result
+        
+        # Find nearest road to exit  
+        exit_result = self.find_nearest_road(exit_pos)
+        if not exit_result:
+            # No road near exit - follow start road then go direct
+            waypoints = [start_pos.copy()]
+            for wp in start_road.generate_waypoints(spacing=spacing):
+                waypoints.append(wp.copy())
+            waypoints.append(exit_pos.copy())
+            return self._clean_waypoints(waypoints)
+        
+        exit_road, _, exit_road_dist = exit_result
+        
+        # If start and exit are on the same road, follow it
+        if start_road.id == exit_road.id:
+            return self._follow_single_road(start_pos, exit_pos, start_road, start_road_dist, exit_road_dist, spacing)
+        
+        # Different roads - check if they connect (endpoints are close)
+        MAX_GAP = 50.0  # Maximum gap between roads to consider them "connected"
+        
+        # Find if there's a reasonable path via roads
+        # Check all combinations of start_road endpoints to exit_road endpoints
+        connections = []
+        for s_end_idx, s_end in enumerate([start_road.centerline[0], start_road.centerline[-1]]):
+            for e_end_idx, e_end in enumerate([exit_road.centerline[0], exit_road.centerline[-1]]):
+                gap = magnitude(s_end - e_end)
+                if gap < MAX_GAP:
+                    connections.append((s_end_idx, e_end_idx, gap, s_end, e_end))
+        
+        if connections:
+            # Use the connection with smallest gap
+            connections.sort(key=lambda x: x[2])
+            s_end_idx, e_end_idx, _, _, _ = connections[0]
+            
+            waypoints = [start_pos.copy()]
+            
+            # Follow start_road toward the connecting endpoint
+            road_wps = start_road.generate_waypoints(spacing=spacing)
+            if s_end_idx == 1:  # Go toward end
+                for wp in road_wps:
+                    d = start_road.get_distance_along(wp)
+                    if d >= start_road_dist - 1.0:
+                        waypoints.append(wp.copy())
+            else:  # Go toward start
+                for wp in reversed(road_wps):
+                    d = start_road.get_distance_along(wp)
+                    if d <= start_road_dist + 1.0:
+                        waypoints.append(wp.copy())
+            
+            # Follow exit_road from connecting endpoint to exit point
+            exit_wps = exit_road.generate_waypoints(spacing=spacing)
+            if e_end_idx == 0:  # Enter from start, go toward exit point
+                for wp in exit_wps:
+                    d = exit_road.get_distance_along(wp)
+                    if d <= exit_road_dist + 1.0:
+                        waypoints.append(wp.copy())
+            else:  # Enter from end, go backward toward exit point
+                for wp in reversed(exit_wps):
+                    d = exit_road.get_distance_along(wp)
+                    if d >= exit_road_dist - 1.0:
+                        waypoints.append(wp.copy())
+            
+            waypoints.append(exit_pos.copy())
+            return self._clean_waypoints(waypoints)
+        
+        # No good road connection - go direct but still use any nearby road segment
+        # This handles cases where roads don't connect
+        direct_dist = magnitude(start_pos - exit_pos)
+        
+        # If exit_road is closer to start_pos than start_road, use exit_road
+        _, _, start_to_exit_road_dist = exit_road.nearest_point(start_pos)
+        _, _, start_to_start_road_dist = start_road.nearest_point(start_pos)
+        
+        if start_to_exit_road_dist < start_to_start_road_dist + 20.0:
+            # Use exit_road directly (it's closer to both start and exit)
+            return self._follow_single_road(start_pos, exit_pos, exit_road, 
+                                           exit_road.get_distance_along(start_pos), 
+                                           exit_road_dist, spacing)
+        
+        # Fall back to direct path
+        return [start_pos.copy(), exit_pos.copy()]
+    
+    def _follow_single_road(self, start_pos: Vec2, exit_pos: Vec2, road: 'Road',
+                           start_dist: float, exit_dist: float, spacing: float) -> List[Vec2]:
+        """Follow a single road from start to exit."""
+        waypoints = [start_pos.copy()]
+        road_wps = road.generate_waypoints(spacing=spacing)
+        
+        if start_dist < exit_dist:
+            # Going forward
+            for wp in road_wps:
+                d = road.get_distance_along(wp)
+                if start_dist - 1.0 <= d <= exit_dist + 1.0:
+                    waypoints.append(wp.copy())
+        else:
+            # Going backward
+            for wp in reversed(road_wps):
+                d = road.get_distance_along(wp)
+                if exit_dist - 1.0 <= d <= start_dist + 1.0:
+                    waypoints.append(wp.copy())
+        
+        waypoints.append(exit_pos.copy())
+        return self._clean_waypoints(waypoints)
+    
+    def _clean_waypoints(self, waypoints: List[Vec2]) -> List[Vec2]:
+        """Remove duplicate/very close consecutive waypoints."""
+        if not waypoints:
+            return waypoints
+        
+        cleaned = [waypoints[0]]
+        for wp in waypoints[1:]:
+            if magnitude(wp - cleaned[-1]) > 1.0:
+                cleaned.append(wp)
+        
+        return cleaned
 
 
 # ============================================================================
@@ -243,13 +433,19 @@ class VenueLoader:
             elif spawn_config.location:
                 position = self.coord_sys.geo_to_sim(spawn_config.location)
                 
-                # Create waypoints to destination
-                waypoints = [position]
+                # Determine destination
+                dest = None
                 if spawn_config.destination_location:
                     dest = self.coord_sys.geo_to_sim(spawn_config.destination_location)
-                    waypoints.append(dest)
                 elif spawn_config.exit_id and spawn_config.exit_id in self.exits:
-                    waypoints.append(self.exits[spawn_config.exit_id])
+                    dest = self.exits[spawn_config.exit_id]
+                
+                if dest is not None:
+                    # Use road-based pathfinding to get to destination
+                    waypoints = self.road_network.find_path_to_exit(position, dest, spacing=8.0)
+                else:
+                    # No destination - just stay at spawn
+                    waypoints = [position]
                 
                 direction = 0.0
                 if len(waypoints) >= 2:

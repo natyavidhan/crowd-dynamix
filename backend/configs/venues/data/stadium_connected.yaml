@@ -1,0 +1,134 @@
+# Stadium venue with properly connected roads
+venue:
+  name: Mayor Radhakrishnana Stadium
+  location: Chennai
+  description: 'Stadium venue with connected road network for crowd flow simulation'
+
+# Origin point (center of the venue area)
+origin:
+  lat: 13.0750
+  lng: 80.2594
+
+# Roads define where agents can walk
+# Each road has a centerline and width
+roads:
+  # Main entrance road (runs south to north)
+  - id: road_entrance
+    name: Main Entrance Road
+    width: 8
+    speed_limit: 1.4
+    bidirectional: true
+    centerline:
+      - lat: 13.0735
+        lng: 80.2594
+      - lat: 13.0740
+        lng: 80.2594
+      - lat: 13.0745
+        lng: 80.2594
+      - lat: 13.0750
+        lng: 80.2594
+
+  # Stadium ring road (around the venue)
+  - id: road_ring_west
+    name: West Ring Road
+    width: 6
+    speed_limit: 1.2
+    bidirectional: true
+    centerline:
+      - lat: 13.0750
+        lng: 80.2594
+      - lat: 13.0755
+        lng: 80.2590
+      - lat: 13.0760
+        lng: 80.2590
+      - lat: 13.0765
+        lng: 80.2594
+
+  # East side of ring
+  - id: road_ring_east
+    name: East Ring Road
+    width: 6
+    speed_limit: 1.2
+    bidirectional: true
+    centerline:
+      - lat: 13.0750
+        lng: 80.2594
+      - lat: 13.0755
+        lng: 80.2598
+      - lat: 13.0760
+        lng: 80.2598
+      - lat: 13.0765
+        lng: 80.2594
+
+  # Exit road (north)
+  - id: road_exit
+    name: Exit Road
+    width: 10
+    speed_limit: 1.4
+    bidirectional: true
+    centerline:
+      - lat: 13.0765
+        lng: 80.2594
+      - lat: 13.0770
+        lng: 80.2594
+      - lat: 13.0775
+        lng: 80.2594
+
+# Exit points (where agents leave the simulation)
+exits:
+  - id: exit_north
+    name: North Exit
+    location:
+      lat: 13.0775
+      lng: 80.2594
+    capacity: 200
+
+# Spawn points (where agents enter)
+spawn_points:
+  - id: spawn_entrance
+    name: Main Entrance Spawn
+    location:
+      lat: 13.0735
+      lng: 80.2594
+    rate: 8
+    spread: 2
+    flow_group: main
+    exit_id: exit_north
+
+# Choke points (monitoring zones)
+choke_points:
+  - id: choke_entrance
+    name: Entrance Choke Point
+    location:
+      lat: 13.0740
+      lng: 80.2594
+    radius: 15
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+
+  - id: choke_junction
+    name: Central Junction
+    location:
+      lat: 13.0750
+      lng: 80.2594
+    radius: 20
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+
+  - id: choke_exit
+    name: Exit Choke Point
+    location:
+      lat: 13.0770
+      lng: 80.2594
+    radius: 15
+    mmwave_enabled: true
+    audio_enabled: true
+    camera_enabled: true
+
+# Default simulation parameters
+defaults:
+  agent_count: 500
+  spawn_rate: 8
+  speed_multiplier: 1
