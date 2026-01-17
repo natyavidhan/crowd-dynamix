@@ -356,6 +356,7 @@ class ProcessedSpawnPoint:
     rate: float
     spread: float
     flow_group: str
+    target_exit_id: Optional[str] = None  # Exit ID for road-based movement
 
 
 # ============================================================================
@@ -464,7 +465,8 @@ class VenueLoader:
                 waypoints=waypoints,
                 rate=spawn_config.rate,
                 spread=spawn_config.spread,
-                flow_group=spawn_config.flow_group
+                flow_group=spawn_config.flow_group,
+                target_exit_id=spawn_config.exit_id
             )
             
             self.spawn_points.append(processed)

@@ -114,7 +114,7 @@ exits:
     name: "Beach Gathering Area"
     location:
       lat: 13.0500
-      lng: 80.2850
+      lng: 80.2840  # At the promenade (east side), not beyond it
     capacity: 500
 
 # Spawn points (where agents enter)
@@ -147,32 +147,33 @@ spawn_points:
     flow_group: "beachgoers"
 
 # Choke points (monitoring zones)
+# Positioned on actual road paths where agents travel
 choke_points:
-  - id: "cp_central_crossing"
-    name: "Central Crossing"
+  - id: "cp_road_junction"
+    name: "Road Junction (Central)"
     location:
       lat: 13.0500
-      lng: 80.2825
+      lng: 80.2810  # On kamarajar_salai where access_central meets
     radius: 25.0
     mmwave_enabled: true
     audio_enabled: true
     camera_enabled: true
 
-  - id: "cp_north_access"
-    name: "Northern Access Point"
+  - id: "cp_road_north"
+    name: "Road North Section"
     location:
       lat: 13.0515
-      lng: 80.2825
+      lng: 80.2810  # On kamarajar_salai near access_north
     radius: 20.0
     mmwave_enabled: true
     audio_enabled: true
     camera_enabled: false
 
-  - id: "cp_south_access"
-    name: "Southern Access Point"
+  - id: "cp_road_south"
+    name: "Road South Section"
     location:
       lat: 13.0485
-      lng: 80.2825
+      lng: 80.2810  # On kamarajar_salai near access_south
     radius: 20.0
     mmwave_enabled: true
     audio_enabled: true
@@ -182,7 +183,7 @@ choke_points:
     name: "Beach Promenade Zone"
     location:
       lat: 13.0500
-      lng: 80.2840
+      lng: 80.2840  # On promenade where access_central meets
     radius: 30.0
     mmwave_enabled: true
     audio_enabled: false

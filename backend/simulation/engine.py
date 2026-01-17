@@ -379,9 +379,11 @@ class SimulationEngine:
             if result:
                 road_id, dist_along, perp_dist = result
                 
-                # Determine target exit
-                target_exit_id = None
-                if psp.waypoints and len(psp.waypoints) > 1:
+                # Use target exit from spawn point config directly
+                target_exit_id = psp.target_exit_id
+                
+                # If no exit specified, try to find from waypoints
+                if target_exit_id is None and psp.waypoints and len(psp.waypoints) > 1:
                     # Find exit nearest to last waypoint
                     last_wp = psp.waypoints[-1]
                     min_exit_dist = float('inf')
@@ -391,7 +393,7 @@ class SimulationEngine:
                             min_exit_dist = d
                             target_exit_id = exit_id
                 
-                # If no exit found from waypoints, use first exit
+                # If still no exit, use first available
                 if target_exit_id is None and self.road_network.exits:
                     target_exit_id = list(self.road_network.exits.keys())[0]
                 

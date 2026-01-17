@@ -39,7 +39,9 @@ class ConnectionManager:
     async def broadcast(self, message: str):
         """Broadcast message to all connected clients."""
         disconnected = set()
-        for connection in self.active_connections:
+        # Copy the set to avoid modification during iteration
+        connections = list(self.active_connections)
+        for connection in connections:
             try:
                 await connection.send_text(message)
             except:

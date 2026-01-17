@@ -103,9 +103,13 @@ class RoadSegment:
     length: float = field(init=False)
     segments: List[Tuple[Vec2, Vec2, float]] = field(init=False)
     
-    # Connections
+    # Connections at endpoints
     connections_start: List[str] = field(default_factory=list)  # roads connected at start
     connections_end: List[str] = field(default_factory=list)    # roads connected at end
+    
+    # Mid-road junctions: (distance_along, connected_road_id)
+    # These are T-junctions where another road connects along this road's length
+    mid_junctions: List[Tuple[float, str]] = field(default_factory=list)
     
     # Exit info
     has_exit_at_start: bool = False
@@ -191,14 +195,21 @@ class RoadNetworkManager:
         self.exits[exit_id] = position
     
     def build_connections(self):
-        """Build road-to-road connections and road-to-exit connections."""
+        """Build road-to-road connections and road-to-exit connections.
+        
+        Supports T-junctions where one road's endpoint connects to any point
+        along another road (not just endpoints).
+        """
         road_list = list(self.roads.values())
+        
+        # Initialize connection lists
+        for road in road_list:
+            road.connections_start = []
+            road.connections_end = []
+            road.mid_junctions = []
         
         # Find road-to-road connections
         for i, road1 in enumerate(road_list):
-            road1.connections_start = []
-            road1.connections_end = []
-            
             start1 = road1.centerline[0]
             end1 = road1.centerline[-1]
             
@@ -209,36 +220,119 @@ class RoadNetworkManager:
                 start2 = road2.centerline[0]
                 end2 = road2.centerline[-1]
                 
-                # Check all endpoint combinations
+                # Check endpoint-to-endpoint connections
                 if distance(end1, start2) < ROAD_CONNECTION_DIST:
-                    road1.connections_end.append(road2.id)
+                    if road2.id not in road1.connections_end:
+                        road1.connections_end.append(road2.id)
+                    if road1.id not in road2.connections_start:
+                        road2.connections_start.append(road1.id)
+                        
                 if distance(end1, end2) < ROAD_CONNECTION_DIST:
-                    road1.connections_end.append(road2.id)
+                    if road2.id not in road1.connections_end:
+                        road1.connections_end.append(road2.id)
+                    if road1.id not in road2.connections_end:
+                        road2.connections_end.append(road1.id)
+                        
                 if distance(start1, start2) < ROAD_CONNECTION_DIST:
-                    road1.connections_start.append(road2.id)
+                    if road2.id not in road1.connections_start:
+                        road1.connections_start.append(road2.id)
+                    if road1.id not in road2.connections_start:
+                        road2.connections_start.append(road1.id)
+                        
                 if distance(start1, end2) < ROAD_CONNECTION_DIST:
-                    road1.connections_start.append(road2.id)
+                    if road2.id not in road1.connections_start:
+                        road1.connections_start.append(road2.id)
+                    if road1.id not in road2.connections_end:
+                        road2.connections_end.append(road1.id)
+                
+                # Check T-junction: road1's endpoint near any point along road2
+                # This handles cases where access roads connect to main road
+                _, dist_along1, perp_dist1 = self._nearest_point_on_road(road2, end1)
+                if perp_dist1 < ROAD_CONNECTION_DIST:
+                    if road2.id not in road1.connections_end:
+                        road1.connections_end.append(road2.id)
+                    
+                    # Check if this is a mid-road junction (not at road2's endpoints)
+                    is_mid_junction = (dist_along1 > ROAD_CONNECTION_DIST and 
+                                       dist_along1 < road2.length - ROAD_CONNECTION_DIST)
+                    if is_mid_junction:
+                        # Add mid-junction to road2: at dist_along1, connects to road1
+                        road2.mid_junctions.append((dist_along1, road1.id))
+                    else:
+                        # It's an endpoint connection
+                        if dist_along1 < road2.length / 2:
+                            if road1.id not in road2.connections_start:
+                                road2.connections_start.append(road1.id)
+                        else:
+                            if road1.id not in road2.connections_end:
+                                road2.connections_end.append(road1.id)
+                
+                _, dist_along2, perp_dist2 = self._nearest_point_on_road(road2, start1)
+                if perp_dist2 < ROAD_CONNECTION_DIST:
+                    if road2.id not in road1.connections_start:
+                        road1.connections_start.append(road2.id)
+                    
+                    # Check if this is a mid-road junction
+                    is_mid_junction = (dist_along2 > ROAD_CONNECTION_DIST and 
+                                       dist_along2 < road2.length - ROAD_CONNECTION_DIST)
+                    if is_mid_junction:
+                        road2.mid_junctions.append((dist_along2, road1.id))
+                    else:
+                        if dist_along2 < road2.length / 2:
+                            if road1.id not in road2.connections_start:
+                                road2.connections_start.append(road1.id)
+                        else:
+                            if road1.id not in road2.connections_end:
+                                road2.connections_end.append(road1.id)
+        
+        # Sort mid-junctions by distance along road
+        for road in road_list:
+            road.mid_junctions.sort(key=lambda x: x[0])
         
         # Find road-to-exit connections
-        # BUT: Don't mark as exit if there are other road connections there
-        # (i.e., it's a junction, not a terminal exit point)
+        # Mark exits at road endpoints regardless of whether there are road connections
+        # (A junction can also be an exit)
+        EXIT_PROXIMITY = 20.0  # Larger radius to catch exits near road ends
+        
         for road in road_list:
             start = road.centerline[0]
             end = road.centerline[-1]
             
             for exit_id, exit_pos in self.exits.items():
-                # Only mark as exit if no other roads connect at that point
-                if distance(start, exit_pos) < EXIT_ARRIVAL_DIST:
-                    # Check if this is a junction (has road connections)
-                    if not road.connections_start:
-                        road.has_exit_at_start = True
-                        road.exit_id_start = exit_id
-                        
-                if distance(end, exit_pos) < EXIT_ARRIVAL_DIST:
-                    # Check if this is a junction (has road connections)
-                    if not road.connections_end:
-                        road.has_exit_at_end = True
-                        road.exit_id_end = exit_id
+                # Check exit near start
+                if distance(start, exit_pos) < EXIT_PROXIMITY:
+                    road.has_exit_at_start = True
+                    road.exit_id_start = exit_id
+                
+                # Check exit near end
+                if distance(end, exit_pos) < EXIT_PROXIMITY:
+                    road.has_exit_at_end = True
+                    road.exit_id_end = exit_id
+                
+                # Also check if exit is along the general direction at end of road
+                # This helps with exits that are a bit beyond the road end
+                if not road.has_exit_at_end:
+                    road_dir = road.direction_at_distance(road.length)
+                    to_exit = exit_pos - end
+                    to_exit_dist = magnitude(to_exit)
+                    if to_exit_dist > 0.1 and to_exit_dist < 50.0:  # Within 50m
+                        to_exit_norm = to_exit / to_exit_dist
+                        dot = np.dot(road_dir, to_exit_norm)
+                        if dot > 0.7:  # Exit is roughly in direction of road end
+                            road.has_exit_at_end = True
+                            road.exit_id_end = exit_id
+                
+                # Same for start, but check opposite direction
+                if not road.has_exit_at_start:
+                    road_dir = road.direction_at_distance(0)
+                    to_exit = exit_pos - start
+                    to_exit_dist = magnitude(to_exit)
+                    if to_exit_dist > 0.1 and to_exit_dist < 50.0:
+                        to_exit_norm = to_exit / to_exit_dist
+                        dot = np.dot(road_dir, to_exit_norm)
+                        if dot < -0.7:  # Exit is opposite to road direction at start
+                            road.has_exit_at_start = True
+                            road.exit_id_start = exit_id
         
         # Build path cache using BFS
         self._build_path_cache()
@@ -408,10 +502,22 @@ class RoadAgentPool:
                     direction = 1  # Go toward end
                 elif next_road_id in road_obj.connections_start:
                     direction = -1  # Go toward start
-                elif road_obj.exit_id_end == target_exit_id:
-                    direction = 1
-                elif road_obj.exit_id_start == target_exit_id:
-                    direction = -1
+                else:
+                    # Check if next road is a mid-junction
+                    for junc_dist, junc_road_id in road_obj.mid_junctions:
+                        if junc_road_id == next_road_id:
+                            # Need to go toward this junction point
+                            if junc_dist > distance_along:
+                                direction = 1  # Junction is ahead
+                            else:
+                                direction = -1  # Junction is behind
+                            break
+                    else:
+                        # Fall back to exit-based direction
+                        if road_obj.exit_id_end == target_exit_id:
+                            direction = 1
+                        elif road_obj.exit_id_start == target_exit_id:
+                            direction = -1
         
         agent = RoadAgent(
             id=self._next_id,
@@ -521,9 +627,27 @@ def update_road_agents(
         
         # Move along road
         movement = agent.speed * dt * agent.direction
+        prev_dist = agent.distance_along
         agent.distance_along += movement
         # Accumulate travel since last transition/spawn
         agent.travel_since_transition += abs(movement)
+        
+        # Check for mid-road junctions (T-junctions)
+        # Agent should turn if it passes a junction that leads to its target
+        if road.mid_junctions and agent.path and len(agent.path) > 1:
+            next_road_in_path = agent.path[agent.path_index + 1] if agent.path_index + 1 < len(agent.path) else None
+            
+            for junc_dist, junc_road_id in road.mid_junctions:
+                # Check if agent crossed this junction
+                if agent.direction > 0:
+                    crossed = prev_dist < junc_dist <= agent.distance_along
+                else:
+                    crossed = agent.distance_along <= junc_dist < prev_dist
+                
+                if crossed and junc_road_id == next_road_in_path:
+                    # Agent should turn here
+                    _transition_at_junction(agent, junc_road_id, pool.network, junc_dist)
+                    break
         
         # Check if reached end of road
         if agent.distance_along >= road.length:
@@ -531,6 +655,10 @@ def update_road_agents(
             # Only exit if this is the agent's target exit
             # Require a minimum distance traveled on this road before exiting
             MIN_EXIT_TRAVEL = 2.0
+            
+            # Debug
+            # print(f"DEBUG: Agent at road end. has_exit_at_end={road.has_exit_at_end}, exit_id_end={road.exit_id_end}, target={agent.target_exit_id}, travel={agent.travel_since_transition}")
+            
             if (
                 road.has_exit_at_end
                 and agent.target_exit_id == road.exit_id_end
@@ -623,6 +751,56 @@ def _find_next_road(
     
     # Just take any connection
     return connections[0] if connections else None
+
+
+def _transition_at_junction(
+    agent: RoadAgent,
+    new_road_id: str,
+    network: RoadNetworkManager,
+    junction_dist: float
+):
+    """Transition agent at a mid-road junction point."""
+    new_road = network.roads.get(new_road_id)
+    if not new_road:
+        return
+    
+    old_road = network.roads.get(agent.road_id)
+    if not old_road:
+        return
+    
+    # Get the junction point on the old road
+    junction_point = old_road.point_at_distance(junction_dist)
+    
+    # Find which end of new road is closest to the junction point
+    dist_to_start = distance(junction_point, new_road.centerline[0])
+    dist_to_end = distance(junction_point, new_road.centerline[-1])
+    
+    if dist_to_start < dist_to_end:
+        # Enter at start, go forward
+        agent.distance_along = 0
+        agent.direction = 1
+    else:
+        # Enter at end, go backward
+        agent.distance_along = new_road.length
+        agent.direction = -1
+    
+    agent.road_id = new_road_id
+    
+    # Update path index
+    if agent.path:
+        try:
+            agent.path_index = agent.path.index(new_road_id)
+        except ValueError:
+            # Road not in path, recalculate
+            if agent.target_exit_id:
+                agent.path = network.get_path_to_exit(new_road_id, agent.target_exit_id)
+                agent.path_index = 0
+    
+    # Adjust lateral offset for new road width
+    max_offset = (new_road.width / 2) - AGENT_RADIUS
+    agent.lateral_offset = max(-max_offset, min(max_offset, agent.lateral_offset))
+    # Reset travel accumulator so agent must travel into the new road before exiting
+    agent.travel_since_transition = 0.0
 
 
 def _transition_to_road(
