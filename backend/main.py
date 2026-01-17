@@ -5,12 +5,12 @@ Provides WebSocket for real-time state and REST endpoints for control.
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import List, Set
+from typing import List, Set, Optional, Literal
 import json
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from models.types import (
     GeoPoint, ChokePoint, SimulationConfig, ControlMessage,
@@ -205,6 +205,61 @@ async def remove_choke_point(choke_point_id: str):
     """Remove a choke point."""
     engine.remove_choke_point(choke_point_id)
     return {"status": "removed", "id": choke_point_id}
+
+
+# ============================================================================
+# Hardware Sensor Endpoints (ESP32)
+# ============================================================================
+
+class AudioSensorInput(BaseModel):
+    """Input from ESP32 audio sensor module."""
+    choke_point_id: str
+    device_id: Optional[str] = None
+    timestamp: float
+    sound_energy_level: float = Field(ge=0, le=1)
+    spike_detected: bool = False
+    spike_intensity: float = Field(default=0, ge=0, le=1)
+    audio_character: Literal["ambient", "loud", "distressed"] = "ambient"
+    raw_data: Optional[dict] = None
+
+
+@app.post("/sensor/audio")
+async def receive_audio_sensor_data(data: AudioSensorInput):
+    """
+    Receive audio sensor data from ESP32 hardware module.
+    Updates the sensor data for the specified choke point.
+    """
+    from models.types import AudioSensorData
+    import time
+    
+    # Create AudioSensorData from input
+    audio_data = AudioSensorData(
+        timestamp=time.time(),
+        choke_point_id=data.choke_point_id,
+        sound_energy_level=data.sound_energy_level,
+        spike_detected=data.spike_detected,
+        spike_intensity=data.spike_intensity,
+        audio_character=data.audio_character
+    )
+    
+    # Update the engine with hardware sensor data
+    engine.update_hardware_audio_sensor(data.choke_point_id, audio_data)
+    
+    return {
+        "status": "received",
+        "choke_point_id": data.choke_point_id,
+        "device_id": data.device_id,
+        "timestamp": data.timestamp
+    }
+
+
+@app.get("/sensor/status")
+async def get_sensor_status():
+    """Get status of connected hardware sensors."""
+    return {
+        "status": "ok",
+        "hardware_sensors": engine.get_hardware_sensor_status()
+    }
 
 
 # ============================================================================

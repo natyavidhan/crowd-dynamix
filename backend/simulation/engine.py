@@ -214,6 +214,10 @@ class SimulationEngine:
     def __post_init__(self):
         self.sensor_buffers = SensorBuffers()
         
+        # Hardware sensor data storage
+        self._hardware_audio_data: Dict[str, 'AudioSensorData'] = {}
+        self._hardware_sensor_last_seen: Dict[str, float] = {}
+        
         # Try to load default venue
         if not self._try_load_default_venue():
             self._setup_demo_scenario()
@@ -415,6 +419,10 @@ class SimulationEngine:
         # Setup adapter
         self.agent_pool_adapter = AgentPoolAdapter(self.road_agent_pool)
         self.agent_pool = self.agent_pool_adapter
+        
+        # Initialize hardware sensor tracking
+        self._hardware_audio_data: Dict[str, 'AudioSensorData'] = {}
+        self._hardware_sensor_last_seen: Dict[str, float] = {}
     
     def get_current_venue_info(self) -> Optional[VenueInfo]:
         """Get info about currently loaded venue."""
@@ -540,6 +548,61 @@ class SimulationEngine:
     
     _state_map = {0: "moving", 1: "slowing", 2: "stopped", 3: "pushing"}
     
+    # ========================================================================
+    # Hardware Sensor Integration
+    # ========================================================================
+    
+    def update_hardware_audio_sensor(self, choke_point_id: str, audio_data: 'AudioSensorData'):
+        """
+        Update audio sensor data from hardware ESP32 module.
+        This data will be used instead of simulated audio data for the choke point.
+        """
+        self._hardware_audio_data[choke_point_id] = audio_data
+        self._hardware_sensor_last_seen[choke_point_id] = time.time()
+        
+        # Update the aggregated sensor data for this choke point
+        if choke_point_id in self.sensor_data:
+            self.sensor_data[choke_point_id].audio = audio_data
+        else:
+            # Create new aggregated data with just audio
+            from models.types import AggregatedSensorData
+            self.sensor_data[choke_point_id] = AggregatedSensorData(
+                choke_point_id=choke_point_id,
+                audio=audio_data
+            )
+    
+    def get_hardware_sensor_status(self) -> Dict:
+        """
+        Get status of all connected hardware sensors.
+        Returns info about connected ESP32 audio sensors and their last update time.
+        """
+        now = time.time()
+        status = {
+            "audio_sensors": {}
+        }
+        
+        for cp_id, last_seen in self._hardware_sensor_last_seen.items():
+            age = now - last_seen
+            is_active = age < 5.0  # Consider active if seen in last 5 seconds
+            
+            status["audio_sensors"][cp_id] = {
+                "last_seen": last_seen,
+                "age_seconds": round(age, 2),
+                "active": is_active,
+                "data": self._hardware_audio_data.get(cp_id)
+            }
+        
+        return status
+    
+    def has_hardware_audio_sensor(self, choke_point_id: str) -> bool:
+        """Check if a choke point has an active hardware audio sensor."""
+        if choke_point_id not in self._hardware_sensor_last_seen:
+            return False
+        
+        # Consider hardware sensor active if seen in last 5 seconds
+        age = time.time() - self._hardware_sensor_last_seen[choke_point_id]
+        return age < 5.0
+
     def get_state(self) -> SimulationState:
         """Get current simulation state for broadcasting."""
         agent_snapshots = []
